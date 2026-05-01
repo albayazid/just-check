@@ -3,18 +3,16 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { useSettingsValue, useUpdateSettings } from "@/hooks/use-settings";
+import { usePrivacySettingsValue, useUpdatePrivacySettings } from "@/hooks/use-privacy-settings";
 import { SUPPORT_EMAIL } from "@/lib/branding-constants";
 import { ExternalLink, FileText, ShieldCheck } from "lucide-react";
 
 export default function PrivacySettingsPage() {
-  const settings = useSettingsValue();
-  const { mutate: updateSettings, isPending: isSaving } = useUpdateSettings();
+  const settings = usePrivacySettingsValue();
+  const { mutate: updateSettings, isPending: isSaving } = useUpdatePrivacySettings();
 
-  const handleCheckboxChange = (field: keyof typeof settings.privacySettings, checked: boolean) => {
-    updateSettings({
-      privacySettings: { ...settings.privacySettings, [field]: checked }
-    });
+  const handleCheckboxChange = (field: keyof typeof settings, checked: boolean) => {
+    updateSettings({ ...settings, [field]: checked });
   };
 
   return (
@@ -37,7 +35,7 @@ export default function PrivacySettingsPage() {
               </div>
               <Switch
                 id="share-anonymous"
-                checked={settings.privacySettings.shareAnonymousData}
+                checked={settings.shareAnonymousData}
                 onCheckedChange={(checked) => handleCheckboxChange('shareAnonymousData', Boolean(checked))}
               />
             </div>
@@ -49,7 +47,7 @@ export default function PrivacySettingsPage() {
               </div>
               <Switch
                 id="share-diagnostics"
-                checked={settings.privacySettings.shareDiagnostics}
+                checked={settings.shareDiagnostics}
                 onCheckedChange={(checked) => handleCheckboxChange('shareDiagnostics', Boolean(checked))}
               />
             </div>

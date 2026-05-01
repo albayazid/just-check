@@ -2,9 +2,7 @@
  * Privacy Settings
  */
 export interface PrivacySettings {
-  /** Share anonymous data with partners */
   shareAnonymousData: boolean;
-  /** Share diagnostic data to help improve app performance */
   shareDiagnostics: boolean;
 }
 
@@ -12,34 +10,16 @@ export interface PrivacySettings {
  * AI Customization Settings
  */
 export interface AICustomizationSettings {
-  /** What you want to call the AI */
   aiNickname: string;
-  /** What AI will call you */
   userNickname: string;
-  /** Your profession (e.g., Software Engineer, Doctor, Student) */
   userProfession: string;
-  /** Topics you're most interested in (comma-separated or text) */
   preferredTopics: string;
-  /** Topics you prefer to avoid (comma-separated or text) */
   avoidTopics: string;
-  /** More information about yourself */
   moreAboutYou: string;
-  /** AI personality tone */
   aiTone: 'default' | 'friendly' | 'warmer' | 'professional' | 'gen-z';
-  /** Response length preference */
   responseLength: 'default' | 'concise' | 'detail';
-  /** Custom instructions for AI behavior */
   customInstructions: string;
-  /** Whether Lumy can use and update persistent memory during chats */
   memoryEnabled: boolean;
-}
-
-/**
- * Complete User Settings
- */
-export interface UserSettings {
-  privacySettings: PrivacySettings;
-  aiCustomizationSettings: AICustomizationSettings;
 }
 
 /**
@@ -67,25 +47,23 @@ export const DEFAULT_AI_CUSTOMIZATION_SETTINGS: AICustomizationSettings = {
 };
 
 /**
- * Default user settings
+ * Privacy settings API response
  */
-export const DEFAULT_USER_SETTINGS: UserSettings = {
-  privacySettings: DEFAULT_PRIVACY_SETTINGS,
-  aiCustomizationSettings: DEFAULT_AI_CUSTOMIZATION_SETTINGS,
-};
-
-/**
- * Partial settings updates (for saving specific sections)
- */
-export type PartialUserSettings = Partial<Pick<UserSettings, 'privacySettings' | 'aiCustomizationSettings'>>;
-
-/**
- * Settings API response
- */
-export interface UserSettingsResponse {
+export interface PrivacySettingsResponse {
   id: string;
   clerk_user_id: string;
-  settings_data: UserSettings;
+  privacy_settings: PrivacySettings;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * AI customization settings API response
+ */
+export interface AICustomizationSettingsResponse {
+  id: string;
+  clerk_user_id: string;
+  ai_customization_settings: AICustomizationSettings;
   created_at: string;
   updated_at: string;
 }

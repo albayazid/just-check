@@ -10,11 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { useSettingsValue, useUpdateSettings } from "@/hooks/use-settings";
+import { useAICustomizationSettingsValue, useUpdateAICustomizationSettings } from "@/hooks/use-ai-customization-settings";
 
 export default function AICustomizationSettingsPage() {
-  const settings = useSettingsValue();
-  const { mutate: updateSettings, isPending: isSaving } = useUpdateSettings();
+  const settings = useAICustomizationSettingsValue();
+  const { mutate: updateSettings, isPending: isSaving } = useUpdateAICustomizationSettings();
 
   const [pendingField, setPendingField] = useState<{ field: string, value: string | boolean } | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -31,9 +31,7 @@ export default function AICustomizationSettingsPage() {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
     timeoutRef.current = setTimeout(() => {
-      updateSettings({
-        aiCustomizationSettings: { ...settings.aiCustomizationSettings, [field]: value }
-      });
+      updateSettings({ ...settings, [field]: value });
       setPendingField(null);
     }, 500);
   }, [settings, updateSettings]);
@@ -42,7 +40,7 @@ export default function AICustomizationSettingsPage() {
     if (pendingField?.field === field) {
       return String(pendingField.value);
     }
-    return String(settings.aiCustomizationSettings[field as keyof typeof settings.aiCustomizationSettings] || '');
+    return String(settings[field as keyof typeof settings] || '');
   };
 
   return (
@@ -201,7 +199,7 @@ export default function AICustomizationSettingsPage() {
               </div>
               <Switch
                 id="memory-enabled"
-                checked={settings.aiCustomizationSettings.memoryEnabled}
+                checked={settings.memoryEnabled}
                 onCheckedChange={(checked) => handleChange('memoryEnabled', checked)}
                 disabled={isSaving}
               />
@@ -211,7 +209,7 @@ export default function AICustomizationSettingsPage() {
               <p className="text-sm text-muted-foreground">
                 Review, edit, or clean up long-term memory outside chat whenever you want.
               </p>
-              {settings.aiCustomizationSettings.memoryEnabled ? (
+              {settings.memoryEnabled ? (
                 <Link href="/settings/ai-customization/memory">
                   <Button variant="outline">
                     Manage Memory

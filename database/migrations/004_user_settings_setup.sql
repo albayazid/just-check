@@ -9,7 +9,8 @@
 CREATE TABLE IF NOT EXISTS public.user_settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   clerk_user_id TEXT UNIQUE NOT NULL REFERENCES public.profiles(clerk_user_id) ON DELETE CASCADE,
-  settings_data JSONB NOT NULL DEFAULT '{}',
+  privacy_settings JSONB NOT NULL DEFAULT '{}',
+  ai_customization_settings JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

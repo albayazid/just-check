@@ -16,7 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useSettings } from "@/hooks/use-settings";
+import { useAICustomizationSettings } from "@/hooks/use-ai-customization-settings";
 import { useMemory, useRemoveMemory, useUpdateMemory } from "@/hooks/use-memory";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +45,7 @@ I want you to remember them for my swift continuity."
 - If you don't remember anything, just politely deny that you don't have anything remembered.`;
 
 export default function MemorySettingsPage() {
-  const settingsQuery = useSettings();
+  const settingsQuery = useAICustomizationSettings();
   const memoryQuery = useMemory();
   const updateMemory = useUpdateMemory();
   const removeMemory = useRemoveMemory();
@@ -55,7 +55,7 @@ export default function MemorySettingsPage() {
   const [deletingMemory, setDeletingMemory] = useState<string | null>(null);
   const [isDeleteAllDialogOpen, setIsDeleteAllDialogOpen] = useState(false);
 
-  const memoryEnabled = settingsQuery.data?.aiCustomizationSettings.memoryEnabled !== false;
+  const memoryEnabled = settingsQuery.data?.memoryEnabled !== false;
   const memories = memoryQuery.data?.memories ?? [];
   const pendingNetworkAction = updateMemory.isPending || removeMemory.isPending;
 

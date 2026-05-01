@@ -157,21 +157,20 @@ export async function POST(req: Request) {
     // Fetch the last message from DB to check for context or continuations
     let lastMessageFromDB = await getLastMessageFromDB(conversationId);
 
-    // Fetch user settings to build personalized system prompt
-    // TODO P6: Consider if we can unify or move away settings fetching.
+    // Fetch user AI customization settings to build personalized system prompt
     let userAISettings: AICustomizationSettings = DEFAULT_AI_CUSTOMIZATION_SETTINGS;
     try {
       const supabase = getSupabaseAdminClient();
       const { data: existingSettings, error } = await supabase
         .from('user_settings')
-        .select('settings_data')
+        .select('ai_customization_settings')
         .eq('clerk_user_id', clerkUserId)
         .single();
 
-      if (!error && existingSettings?.settings_data?.aiCustomizationSettings) {
+      if (!error && existingSettings?.ai_customization_settings) {
         userAISettings = {
           ...DEFAULT_AI_CUSTOMIZATION_SETTINGS,
-          ...existingSettings.settings_data.aiCustomizationSettings,
+          ...existingSettings.ai_customization_settings,
         };
       }
       // Silently ignore errors - will use defaults
