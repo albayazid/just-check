@@ -33,9 +33,9 @@ CREATE INDEX IF NOT EXISTS idx_profiles_clerk_user_id ON public.profiles(clerk_u
 CREATE INDEX IF NOT EXISTS idx_profiles_completion ON public.profiles(id) 
   WHERE full_name IS NOT NULL AND nickname IS NOT NULL AND date_of_birth IS NOT NULL;
 
--- 3. DISABLE ROW LEVEL SECURITY (Compatible with Clerk)
--- Since we're using service role key which bypasses RLS, disable it for simpler setup
-ALTER TABLE public.profiles DISABLE ROW LEVEL SECURITY;
+-- 3. ENABLE ROW LEVEL SECURITY (default-deny)
+-- Service role key bypasses RLS, so this only blocks the anon/publishable key
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- 4. CREATE UPDATED_AT TRIGGER FUNCTION AND TRIGGER
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -102,7 +102,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 6. OPTIONAL: CREATE A TEST PROFILE (Uncomment to test)
+-- 6. REVOKE PUBLIC ACCESS ON HELPER FUNCTIONS
+-- Prevent anon key from calling these functions
+REVOKE ALL ON FUNCTION public.is_profile_complete(public.profiles) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_profile_completion_status(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.update_updated_at_column() FROM PUBLIC;
+
+-- 7. OPTIONAL: CREATE A TEST PROFILE (Uncomment to test)
 -- INSERT INTO public.profiles (clerk_user_id, email, full_name, nickname, date_of_birth) 
 -- VALUES ('test_clerk_user_id', 'test@example.com', 'Test User', 'Tester', '1990-01-01') 
 -- ON CONFLICT (clerk_user_id) DO NOTHING;

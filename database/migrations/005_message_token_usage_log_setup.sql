@@ -23,5 +23,5 @@ CREATE INDEX IF NOT EXISTS idx_message_token_usage_log_message_id
 CREATE INDEX IF NOT EXISTS idx_message_token_usage_log_created_at 
     ON public.message_token_usage_log(created_at);
 
--- Disable RLS (consistent with other tables)
-ALTER TABLE public.message_token_usage_log DISABLE ROW LEVEL SECURITY;
+-- Enable RLS (default-deny, service role bypasses)
+ALTER TABLE public.message_token_usage_log ENABLE ROW LEVEL SECURITY;

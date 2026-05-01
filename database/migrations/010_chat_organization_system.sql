@@ -61,8 +61,8 @@ CREATE INDEX IF NOT EXISTS idx_folders_user
   ON public.conversation_folders(clerk_user_id, created_at)
   WHERE deleted_at IS NULL;
 
--- 5. DISABLE ROW LEVEL SECURITY
-ALTER TABLE public.conversation_folders DISABLE ROW LEVEL SECURITY;
+-- 5. ENABLE ROW LEVEL SECURITY (default-deny, service role bypasses)
+ALTER TABLE public.conversation_folders ENABLE ROW LEVEL SECURITY;
 
 -- 6. CREATE UPDATED_AT TRIGGER FOR FOLDERS
 DROP TRIGGER IF EXISTS update_conversation_folders_updated_at ON public.conversation_folders;

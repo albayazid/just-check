@@ -36,8 +36,8 @@ CREATE INDEX IF NOT EXISTS idx_tool_usage_log_created_at
 CREATE INDEX IF NOT EXISTS idx_tool_usage_log_cost
     ON public.tool_usage_log(estimated_cost_cents);
 
--- Disable RLS (consistent with other tables)
-ALTER TABLE public.tool_usage_log DISABLE ROW LEVEL SECURITY;
+-- Enable RLS (default-deny, service role bypasses)
+ALTER TABLE public.tool_usage_log ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
 -- SETUP COMPLETE!

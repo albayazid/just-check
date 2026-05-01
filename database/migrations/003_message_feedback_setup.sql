@@ -60,8 +60,11 @@ CREATE TRIGGER update_conversation_timestamp_on_feedback
   FOR EACH ROW
   EXECUTE FUNCTION update_conversation_on_feedback_change();
 
--- Disable RLS (consistent with other tables)
-ALTER TABLE public.message_feedback DISABLE ROW LEVEL SECURITY;
+-- Enable RLS (default-deny, service role bypasses)
+ALTER TABLE public.message_feedback ENABLE ROW LEVEL SECURITY;
 
 -- Enable real-time for future use
 ALTER PUBLICATION supabase_realtime ADD TABLE public.message_feedback;
+
+-- Revoke public access on trigger function
+REVOKE ALL ON FUNCTION public.update_conversation_on_feedback_change() FROM PUBLIC;

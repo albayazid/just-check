@@ -55,10 +55,10 @@ WHERE deleted_at IS NULL;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.conversations;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
 
--- 5. DISABLE ROW LEVEL SECURITY (Compatible with existing setup)
--- Since we're using service role key, disable RLS for simpler integration
-ALTER TABLE public.conversations DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.messages DISABLE ROW LEVEL SECURITY;
+-- 5. ENABLE ROW LEVEL SECURITY (default-deny)
+-- Service role key bypasses RLS, so this only blocks the anon/publishable key
+ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
 -- 6. CREATE UPDATED_AT TRIGGERS
 -- (Note: update_updated_at_column function is created in 001_complete_profiles_setup.sql)
@@ -95,3 +95,6 @@ CREATE TRIGGER update_conversation_timestamp
     AFTER INSERT OR UPDATE OR DELETE ON public.messages
     FOR EACH ROW
     EXECUTE FUNCTION update_conversation_on_message_change();
+
+-- 8. REVOKE PUBLIC ACCESS ON TRIGGER FUNCTION
+REVOKE ALL ON FUNCTION public.update_conversation_on_message_change() FROM PUBLIC;

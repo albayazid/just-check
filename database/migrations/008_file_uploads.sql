@@ -48,8 +48,8 @@ CREATE INDEX IF NOT EXISTS idx_file_uploads_user_created ON public.file_uploads(
 CREATE INDEX IF NOT EXISTS idx_file_uploads_active ON public.file_uploads(user_id, created_at DESC)
   WHERE deleted_at IS NULL;
 
--- 3. DISABLE ROW LEVEL SECURITY (consistent with existing setup)
-ALTER TABLE public.file_uploads DISABLE ROW LEVEL SECURITY;
+-- 3. ENABLE ROW LEVEL SECURITY (default-deny, service role bypasses)
+ALTER TABLE public.file_uploads ENABLE ROW LEVEL SECURITY;
 
 -- 4. CREATE UPDATED_AT TRIGGER
 DROP TRIGGER IF EXISTS update_file_uploads_updated_at ON public.file_uploads;

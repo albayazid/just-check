@@ -30,4 +30,8 @@ CREATE TRIGGER trigger_update_user_memory_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_user_memory_updated_at();
 
-ALTER TABLE public.user_memory DISABLE ROW LEVEL SECURITY;
+-- Enable RLS (default-deny, service role bypasses)
+ALTER TABLE public.user_memory ENABLE ROW LEVEL SECURITY;
+
+-- Revoke public access on trigger function
+REVOKE ALL ON FUNCTION public.update_user_memory_updated_at() FROM PUBLIC;

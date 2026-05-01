@@ -30,7 +30,8 @@ CREATE TRIGGER update_feedback_submissions_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
-ALTER TABLE public.feedback_submissions DISABLE ROW LEVEL SECURITY;
+-- Enable RLS (default-deny, service role bypasses)
+ALTER TABLE public.feedback_submissions ENABLE ROW LEVEL SECURITY;
 
 CREATE TABLE IF NOT EXISTS public.feedback_attachments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -53,4 +54,5 @@ CREATE INDEX IF NOT EXISTS idx_feedback_attachments_clerk_user_id
 CREATE INDEX IF NOT EXISTS idx_feedback_attachments_created_at
   ON public.feedback_attachments(created_at DESC);
 
-ALTER TABLE public.feedback_attachments DISABLE ROW LEVEL SECURITY;
+-- Enable RLS (default-deny, service role bypasses)
+ALTER TABLE public.feedback_attachments ENABLE ROW LEVEL SECURITY;

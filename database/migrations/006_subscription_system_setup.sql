@@ -54,8 +54,8 @@ CREATE TRIGGER update_user_subscriptions_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Disable RLS (consistent with other tables)
-ALTER TABLE public.user_subscriptions DISABLE ROW LEVEL SECURITY;
+-- Enable RLS (default-deny, service role bypasses)
+ALTER TABLE public.user_subscriptions ENABLE ROW LEVEL SECURITY;
 
 -- Enable real-time for future use
 ALTER PUBLICATION supabase_realtime ADD TABLE public.user_subscriptions;
@@ -87,6 +87,9 @@ BEGIN
   LIMIT 1;
 END;
 $$;
+
+-- Revoke public access on this SECURITY DEFINER function
+REVOKE ALL ON FUNCTION public.get_user_subscription(TEXT) FROM PUBLIC;
 
 -- ============================================================================
 -- PERIODIC ALLOWANCE TABLE
@@ -122,8 +125,8 @@ CREATE TRIGGER update_periodic_allowance_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Disable RLS (consistent with other tables)
-ALTER TABLE public.periodic_allowance DISABLE ROW LEVEL SECURITY;
+-- Enable RLS (default-deny, service role bypasses)
+ALTER TABLE public.periodic_allowance ENABLE ROW LEVEL SECURITY;
 
 --- Create a function to atomically deduct allowance with clamping to 0.
 --- The application refreshes expired daily UTC windows before calling this function.
@@ -148,6 +151,9 @@ $$ LANGUAGE plpgsql;
 
 -- Grant execute permission to the service role
 GRANT EXECUTE ON FUNCTION deduct_allowance(TEXT, NUMERIC) TO service_role;
+
+-- Revoke public access
+REVOKE ALL ON FUNCTION public.deduct_allowance(TEXT, NUMERIC) FROM PUBLIC;
 
 -- ============================================================================
 -- WEBHOOK EVENT LOG TABLE
@@ -184,8 +190,8 @@ CREATE INDEX IF NOT EXISTS idx_webhook_event_processed
 CREATE INDEX IF NOT EXISTS idx_webhook_event_received_at 
     ON public.webhook_event_log(received_at);
 
--- Disable RLS (consistent with other tables)
-ALTER TABLE public.webhook_event_log DISABLE ROW LEVEL SECURITY;
+-- Enable RLS (default-deny, service role bypasses)
+ALTER TABLE public.webhook_event_log ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
 -- DODO CUSTOMER MAPPING TABLE
@@ -211,8 +217,8 @@ CREATE TRIGGER update_dodo_customer_mapping_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Disable RLS (consistent with other tables)
-ALTER TABLE public.dodo_customer_mapping DISABLE ROW LEVEL SECURITY;
+-- Enable RLS (default-deny, service role bypasses)
+ALTER TABLE public.dodo_customer_mapping ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
 -- SETUP COMPLETE!

@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS public.signed_url_cache (
 CREATE INDEX IF NOT EXISTS idx_signed_url_cache_expires_at 
   ON public.signed_url_cache(expires_at);
 
--- 3. DISABLE ROW LEVEL SECURITY
-ALTER TABLE public.signed_url_cache DISABLE ROW LEVEL SECURITY;
+-- 3. ENABLE ROW LEVEL SECURITY (default-deny, service role bypasses)
+ALTER TABLE public.signed_url_cache ENABLE ROW LEVEL SECURITY;
 
 -- 4. CREATE HELPER FUNCTION FOR SOFT DELETE CASCADE (must be created BEFORE trigger)
 CREATE OR REPLACE FUNCTION delete_signed_url_for_file() RETURNS TRIGGER AS $$
@@ -58,3 +58,24 @@ SELECT cron.schedule(
   '0 0 * * *',  -- Daily at midnight UTC
   $$DELETE FROM public.signed_url_cache WHERE expires_at < NOW()$$
 );
+
+-- 7. REVOKE PUBLIC ACCESS ON HELPER FUNCTION
+REVOKE ALL ON FUNCTION public.delete_signed_url_for_file() FROM PUBLIC;
+
+-- 8. STORAGE BUCKET DEFAULT-DENY
+-- Ensure user-assets bucket exists and remove any default policies
+-- (only runs if storage.policies table exists — skip if not yet set up)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'storage' AND table_name = 'policies'
+  ) THEN
+    INSERT INTO storage.buckets (id, name, public)
+    VALUES ('user-assets', 'user-assets', false)
+    ON CONFLICT (id) DO NOTHING;
+
+    DELETE FROM storage.policies WHERE bucket_id = 'user-assets';
+  END IF;
+END
+$$;

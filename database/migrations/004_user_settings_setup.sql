@@ -31,3 +31,9 @@ CREATE TRIGGER trigger_update_user_settings_updated_at
   BEFORE UPDATE ON public.user_settings
   FOR EACH ROW
   EXECUTE FUNCTION update_user_settings_updated_at();
+
+-- Enable RLS (default-deny, service role bypasses)
+ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
+
+-- Revoke public access on trigger function
+REVOKE ALL ON FUNCTION public.update_user_settings_updated_at() FROM PUBLIC;
