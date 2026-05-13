@@ -19,7 +19,7 @@ export function useUsage() {
   return useQuery({
     queryKey: ['usage'],
     queryFn: fetchUsage,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 60 * 1000, // 1 minute
     refetchOnWindowFocus: true,
   });
 }

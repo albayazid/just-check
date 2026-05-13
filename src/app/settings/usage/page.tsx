@@ -19,9 +19,10 @@ import { getPlanDisplayName } from "@/lib/subscription-utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import { RefreshCw } from "lucide-react";
 
 export default function UsagePage() {
-  const { data: usageData, isLoading: usageLoading, error: usageError } = useUsage();
+  const { data: usageData, isLoading: usageLoading, error: usageError, isFetching: isUsageFetching } = useUsage();
   const { data: subscriptionData, isLoading: subscriptionLoading, error: subscriptionError } = useSubscription();
   const queryClient = useQueryClient();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -457,7 +458,18 @@ export default function UsagePage() {
       {/* Monthly Allowance Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Daily Allowance</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle>Daily Allowance</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['usage'] })}
+              disabled={isUsageFetching}
+            >
+              <RefreshCw className={`h-4 w-4 ${isUsageFetching ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
           <CardDescription>
             Track your allowance for daily window
           </CardDescription>
