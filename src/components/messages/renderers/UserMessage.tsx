@@ -2,12 +2,14 @@
 
 import { memo, useState, useCallback, useEffect, useRef } from 'react';
 import { UIMessage } from 'ai';
-import { Copy, Check, Pencil, X, Loader2, ArrowUp, FileText } from 'lucide-react';
+import { Copy, Check, Pencil, X, Loader2, ArrowUp, FileText, XIcon, Download } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Overlay, OverlayClose, OverlayContent, OverlayDescription, OverlayTitle } from '@/components/custom-ui/overlay';
 import { useIsTouchDevice } from '@/hooks/use-touch-device';
 import { useAttachmentUrl, isAttachmentUrl } from '@/hooks/use-attachment-url';
 import { cn } from '@/lib/utils';
 import { copyToClipboard } from '@/lib/utils/clipboard';
+import { toast } from 'sonner';
 import { BranchIndicator } from './BranchIndicator';
 
 interface UserMessageProps {
@@ -23,7 +25,8 @@ interface UserMessageProps {
 }
 
 /**
- * Individual image component that handles URL resolution
+ * Individual image component that handles URL resolution.
+ * Clicking opens a full-size view in a dialog overlay.
  */
 const MessageImage = memo(function MessageImage({
   url,
@@ -33,29 +36,100 @@ const MessageImage = memo(function MessageImage({
   filename?: string
 }) {
   const { resolvedUrl, isResolving, error } = useAttachmentUrl(url);
+  const [open, setOpen] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const displayUrl = !isAttachmentUrl(url) ? url : resolvedUrl;
   const showLoading = isAttachmentUrl(url) && isResolving;
   const showError = isAttachmentUrl(url) && error;
+  const canClick = !showLoading && !showError && displayUrl;
 
   return (
-    <div className="relative rounded-lg overflow-hidden border border-border/50 shadow-sm">
-      {showLoading ? (
-        <div className="w-24 h-24 flex items-center justify-center bg-muted">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : showError ? (
-        <div className="w-24 h-24 flex items-center justify-center bg-muted text-destructive text-xs p-2">
-          Failed to load image
-        </div>
-      ) : (
-        <img
-          src={displayUrl}
-          alt={filename || 'Uploaded image'}
-          className="w-24 h-24 object-cover"
-        />
-      )}
-    </div>
+    <>
+      <button
+        type="button"
+        onClick={canClick ? () => setOpen(true) : undefined}
+        className={cn(
+          'relative rounded-lg overflow-hidden border border-border/50 shadow-sm',
+          canClick && 'cursor-pointer hover:opacity-90 transition-opacity'
+        )}
+      >
+        {showLoading ? (
+          <div className="w-24 h-24 flex items-center justify-center bg-muted">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : showError ? (
+          <div className="w-24 h-24 flex items-center justify-center bg-muted text-destructive text-xs p-2">
+            Failed to load image
+          </div>
+        ) : (
+          <img
+            src={displayUrl}
+            alt={filename || 'Uploaded image'}
+            className="w-24 h-24 object-cover"
+          />
+        )}
+      </button>
+      <Overlay open={open} onOpenChange={setOpen}>
+        <OverlayContent
+          onClick={() => setOpen(false)}
+          showCloseButton={false}
+        >
+          <OverlayTitle className="sr-only">{filename || 'Image preview'}</OverlayTitle>
+          <OverlayDescription className="sr-only">Full-size image preview</OverlayDescription>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={displayUrl}
+            alt={filename || 'Uploaded image'}
+            className="max-h-[90vh] max-w-[90vw] object-contain select-none"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div className="absolute top-4 right-4 flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (!displayUrl || isDownloading) return;
+                    setIsDownloading(true);
+                    try {
+                      const response = await fetch(displayUrl);
+                      const blob = await response.blob();
+                      const blobUrl = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = blobUrl;
+                      a.download = filename || 'image';
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(blobUrl);
+                    } catch (err) {
+                      toast.error('Failed to download image. Please retry.');
+                    } finally {
+                      setIsDownloading(false);
+                    }
+                  }}
+                  disabled={isDownloading}
+                  className="rounded-full bg-white/10 p-2 text-white/80 hover:text-white hover:bg-white/20 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isDownloading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Download className="size-4" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>{isDownloading ? 'Downloading...' : 'Download image'}</p>
+              </TooltipContent>
+            </Tooltip>
+            <OverlayClose className="rounded-full bg-white/10 p-2 text-white/80 hover:text-white hover:bg-white/20 transition-colors flex items-center justify-center">
+              <XIcon className="size-4" />
+            </OverlayClose>
+          </div>
+        </OverlayContent>
+      </Overlay>
+    </>
   );
 });
 
