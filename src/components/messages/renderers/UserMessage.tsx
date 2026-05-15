@@ -6,7 +6,7 @@ import { Copy, Check, Pencil, X, Loader2, ArrowUp, FileText, XIcon, Download } f
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Overlay, OverlayClose, OverlayContent, OverlayDescription, OverlayTitle } from '@/components/custom-ui/overlay';
 import { useIsTouchDevice } from '@/hooks/use-touch-device';
-import { useAttachmentUrl, isAttachmentUrl } from '@/hooks/use-attachment-url';
+import { useAttachmentUrl } from '@/hooks/use-attachment-url';
 import { cn } from '@/lib/utils';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { toast } from 'sonner';
@@ -39,10 +39,7 @@ const MessageImage = memo(function MessageImage({
   const [open, setOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
-  const displayUrl = !isAttachmentUrl(url) ? url : resolvedUrl;
-  const showLoading = isAttachmentUrl(url) && isResolving;
-  const showError = isAttachmentUrl(url) && error;
-  const canClick = !showLoading && !showError && displayUrl;
+  const canClick = !isResolving && !error && resolvedUrl;
 
   return (
     <>
@@ -54,17 +51,17 @@ const MessageImage = memo(function MessageImage({
           canClick && 'cursor-pointer hover:opacity-90 transition-opacity'
         )}
       >
-        {showLoading ? (
+        {isResolving ? (
           <div className="w-24 h-24 flex items-center justify-center bg-muted">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : showError ? (
+        ) : error ? (
           <div className="w-24 h-24 flex items-center justify-center bg-muted text-destructive text-xs p-2">
             Failed to load image
           </div>
         ) : (
           <img
-            src={displayUrl}
+            src={resolvedUrl}
             alt={filename || 'Uploaded image'}
             className="w-24 h-24 object-cover"
           />
@@ -87,7 +84,7 @@ const MessageImage = memo(function MessageImage({
           <OverlayDescription className="sr-only">Full-size image preview</OverlayDescription>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={displayUrl}
+            src={resolvedUrl}
             alt={filename || 'Uploaded image'}
             className="max-h-[90vh] max-w-[90vw] object-contain select-none"
             onClick={(e) => e.stopPropagation()}
@@ -98,10 +95,10 @@ const MessageImage = memo(function MessageImage({
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
-                    if (!displayUrl || isDownloading) return;
+                    if (!resolvedUrl || isDownloading) return;
                     setIsDownloading(true);
                     try {
-                      const response = await fetch(displayUrl);
+                      const response = await fetch(resolvedUrl);
                       if (!response.ok) throw new Error(`Download failed: ${response.status}`);
                       const blob = await response.blob();
                       const blobUrl = URL.createObjectURL(blob);
@@ -148,7 +145,7 @@ const MessageFile = memo(function MessageFile({
   part: Extract<UIMessage['parts'][number], { type: 'file' }>
 }) {
   const { resolvedUrl, isResolving, error } = useAttachmentUrl(part.url);
-  const href = isAttachmentUrl(part.url) ? resolvedUrl : part.url;
+  const href = resolvedUrl;
   const fileName = part.filename || 'Attached file';
   const [open, setOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
