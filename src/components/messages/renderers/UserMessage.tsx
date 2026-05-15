@@ -102,6 +102,7 @@ const MessageImage = memo(function MessageImage({
                     setIsDownloading(true);
                     try {
                       const response = await fetch(displayUrl);
+                      if (!response.ok) throw new Error(`Download failed: ${response.status}`);
                       const blob = await response.blob();
                       const blobUrl = URL.createObjectURL(blob);
                       const a = document.createElement('a');
@@ -149,45 +150,123 @@ const MessageFile = memo(function MessageFile({
   const { resolvedUrl, isResolving, error } = useAttachmentUrl(part.url);
   const href = isAttachmentUrl(part.url) ? resolvedUrl : part.url;
   const fileName = part.filename || 'Attached file';
+  const [open, setOpen] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
-  const content = (
-    <div className="flex h-24 w-24 flex-col overflow-hidden rounded-lg border border-border/60 bg-card p-2 text-card-foreground shadow-sm transition-colors hover:bg-muted/70">
-      <div className="flex min-h-0 flex-1 items-center justify-center">
-        {isResolving ? (
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        ) : error ? (
-          <X className="h-6 w-6 text-destructive" />
-        ) : (
-          <FileText className="h-9 w-9 text-primary" />
-        )}
-      </div>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="w-full truncate text-center text-xs font-medium text-muted-foreground">
-            {fileName}
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <p>{error ? `${fileName} unavailable` : fileName}</p>
-        </TooltipContent>
-      </Tooltip>
-    </div>
-  );
+  const canClick = !isResolving && !error && href;
 
-  if (!href || error || isResolving) {
-    return content;
-  }
+  const handleDownload = useCallback(async () => {
+    if (!href || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const response = await fetch(href);
+      if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      toast.error('Failed to download file. Please retry.');
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [href, isDownloading, fileName]);
 
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="block h-24 w-24"
-      download={fileName}
-    >
-      {content}
-    </a>
+    <>
+      <button
+        type="button"
+        onClick={canClick ? () => setOpen(true) : undefined}
+        className={cn(
+          'flex h-24 w-24 flex-col overflow-hidden rounded-lg border border-border/60 bg-card p-2 text-card-foreground shadow-sm transition-colors',
+          canClick ? 'cursor-pointer hover:bg-muted/70' : 'cursor-default'
+        )}
+      >
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          {isResolving ? (
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          ) : error ? (
+            <X className="h-6 w-6 text-destructive" />
+          ) : (
+            <FileText className="h-9 w-9 text-primary" />
+          )}
+        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="w-full truncate text-center text-xs font-medium text-muted-foreground">
+              {fileName}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p>{error ? `${fileName} unavailable` : fileName}</p>
+          </TooltipContent>
+        </Tooltip>
+      </button>
+      <Overlay open={open} onOpenChange={setOpen}>
+        <OverlayContent
+          onClick={() => setOpen(false)}
+          showCloseButton={false}
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            const container = e.currentTarget as HTMLElement;
+            container.tabIndex = -1;
+            container.focus();
+          }}
+        >
+          <OverlayTitle className="sr-only">{fileName}</OverlayTitle>
+          <OverlayDescription className="sr-only">File preview</OverlayDescription>
+          <div
+            className="flex flex-col items-center gap-4 rounded-2xl bg-muted backdrop-blur-md p-8 max-w-[90vw] select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <FileText className="h-20 w-20 text-muted-foreground/80" />
+            <span className="text-sm font-medium text-foreground/90 text-center break-all leading-snug max-w-xs">
+              {fileName}
+            </span>
+            <button
+              onClick={handleDownload}
+              disabled={isDownloading}
+              className="flex items-center gap-2 rounded-xl bg-muted-foreground/10 px-4 py-2 text-sm text-foreground/80 hover:text-foreground hover:bg-muted-foreground/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isDownloading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {isDownloading ? 'Downloading...' : 'Download'}
+            </button>
+          </div>
+          <div className="absolute top-4 right-4 flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDownload(); }}
+                  disabled={isDownloading}
+                  className="rounded-full bg-white/10 p-2 text-white/80 hover:text-white hover:bg-white/20 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isDownloading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Download className="size-4" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>{isDownloading ? 'Downloading...' : 'Download file'}</p>
+              </TooltipContent>
+            </Tooltip>
+            <OverlayClose className="rounded-full bg-white/10 p-2 text-white/80 hover:text-white hover:bg-white/20 transition-colors flex items-center justify-center">
+              <XIcon className="size-4" />
+            </OverlayClose>
+          </div>
+        </OverlayContent>
+      </Overlay>
+    </>
   );
 });
 
