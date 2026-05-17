@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { UIMessage } from 'ai';
 import { UserMessage } from './UserMessage';
+import type { EditMessagePart } from './UserMessage';
 import { AIMessage } from './AIMessage';
 
 interface MessageRendererProps {
@@ -10,12 +11,16 @@ interface MessageRendererProps {
   isStreaming?: boolean;
   isLoading?: boolean;
   isGenerating?: boolean;
-  onEdit?: (text: string) => void;
+  onEdit?: (parts: EditMessagePart[]) => void;
   onRegenerate?: () => void;
   branchCurrentIndex?: number;
   branchTotalSiblings?: number;
   onBranchPrevious?: () => void;
   onBranchNext?: () => void;
+  selectedUIModelId: string;
+  onUIModelChange: (uiModelId: string) => void;
+  hasAllowance?: boolean;
+  isLoadingAllowance?: boolean;
 }
 
 export const MessageRenderer = memo(function MessageRenderer({
@@ -29,6 +34,10 @@ export const MessageRenderer = memo(function MessageRenderer({
   branchTotalSiblings,
   onBranchPrevious,
   onBranchNext,
+  selectedUIModelId,
+  onUIModelChange,
+  hasAllowance,
+  isLoadingAllowance,
 }: MessageRendererProps) {
 
   switch (message.role) {
@@ -43,6 +52,10 @@ export const MessageRenderer = memo(function MessageRenderer({
           onBranchNext={onBranchNext}
           isGenerating={isGenerating}
           isLoading={isLoading}
+          selectedUIModelId={selectedUIModelId}
+          onUIModelChange={onUIModelChange}
+          hasAllowance={hasAllowance}
+          isLoadingAllowance={isLoadingAllowance}
         />
       );
     case 'assistant':

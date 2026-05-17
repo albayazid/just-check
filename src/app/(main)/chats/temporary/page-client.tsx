@@ -236,13 +236,13 @@ export default function TemporaryChatPageClient() {
           toast.error('Unable to start temporary chat. Please try again.');
         }
       }}
-      onSubmitEditedMessage={({ text, previousMessageId, currentUIModelId, sendMessage }) => {
+      onSubmitEditedMessage={({ parts, previousMessageId, currentUIModelId, sendMessage }) => {
         if (!conversationId) {
           return;
         }
 
         sendMessage(
-          { parts: [{ type: 'text', text }] },
+          { parts },
           {
             body: { id: conversationId, UIModelId: currentUIModelId, previousMessageId },
           }

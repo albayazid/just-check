@@ -16,6 +16,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { ChatInput } from '@/components/chat-input';
 import { MessageRenderer } from '@/components/messages/renderers/MessageRenderer';
+import type { EditMessagePart } from '@/components/messages/renderers/UserMessage';
 import { useBranchSync } from '@/hooks/use-branch-sync';
 import { getLastRealMessageId, type SiblingInfo } from '@/hooks/use-branch-state';
 import { useOptimisticMessages } from '@/hooks/use-optimistic-messages';
@@ -52,7 +53,7 @@ type ChatPageSendContext = {
 };
 
 type ChatPageEditContext = {
-  text: string;
+  parts: EditMessagePart[];
   previousMessageId: string | null;
   currentUIModelId: string;
   sendMessage: ReturnType<typeof useChat>['sendMessage'];
@@ -258,7 +259,7 @@ export function ChatPageShell({
     });
   }, [canSendMessages, currentUIModelId, displayedMessages, onSubmitMessage, sendMessage]);
 
-  const handleEditMessage = useCallback((text: string, previousMessageId: string | null) => {
+  const handleEditMessage = useCallback((parts: EditMessagePart[], previousMessageId: string | null) => {
     if (!canMutateMessages) {
       return;
     }
@@ -273,7 +274,7 @@ export function ChatPageShell({
     }
 
     onSubmitEditedMessage({
-      text,
+      parts,
       previousMessageId,
       currentUIModelId,
       sendMessage,
@@ -367,7 +368,7 @@ export function ChatPageShell({
                       isGenerating={isGenerating}
                       onEdit={
                         message.role === 'user'
-                          ? (text) => handleEditMessage(text, editParentId)
+                          ? (parts) => handleEditMessage(parts, editParentId)
                           : undefined
                       }
                       onRegenerate={
@@ -379,6 +380,10 @@ export function ChatPageShell({
                       branchTotalSiblings={branchTotalSiblings}
                       onBranchPrevious={branchParentId !== undefined ? () => handleBranchPrevious(branchParentId) : undefined}
                       onBranchNext={branchParentId !== undefined ? () => handleBranchNext(branchParentId) : undefined}
+                      selectedUIModelId={currentUIModelId}
+                      onUIModelChange={setCurrentUIModelId}
+                      hasAllowance={hasAllowance}
+                      isLoadingAllowance={isLoadingAllowance}
                     />
                   );
                 })}

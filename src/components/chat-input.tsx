@@ -14,6 +14,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAttachmentUrl } from "@/hooks/use-attachment-url";
 import { isWebSpeechRecognitionSupported } from "@/lib/input-speech-recognition/providers/web-speech-api";
 import { useInputModality } from "@/hooks/use-input-modality";
 import VoiceVisualizer from "./voice-visualizer";
@@ -58,8 +59,14 @@ import {
 // TODO || P8: Suggestion: Consider making this configurable via props or environment 
 const MAX_FILES = 5;
 
+interface ChatInputAttachment {
+  url: string;
+  originalName: string;
+  mimeType: string;
+}
+
 interface ChatInputProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onSubmit'> {
-  onSubmit?: (message: string, attachments?: Array<{ url: string; originalName: string; mimeType: string }>) => void;
+  onSubmit?: (message: string, attachments?: ChatInputAttachment[]) => void;
   isLoading?: boolean;
   isAiGenerating?: boolean;
   onStopGenerating?: () => void;
@@ -84,18 +91,100 @@ interface ChatInputProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onS
   isLoadingAllowance?: boolean;
   /** Whether file uploads are allowed before local count checks */
   canUploadFile?: boolean;
+  /** Pre-populated input text (for edit mode) */
+  initialValue?: string;
+  /** Already-uploaded attachments to show as removable (for edit mode) */
+  existingAttachments?: ChatInputAttachment[];
+  /** Cancel callback — enables edit mode (Cancel button, Escape key, hides model/voice) */
+  onCancel?: () => void;
 }
 interface AttachedFile {
   id: string;
   file: File;
   uploadStatus: 'pending' | 'uploading' | 'success' | 'error';
   uploadProgress?: number;
-  uploadResult?: {
-    url: string;
-    originalName: string;
-    mimeType: string;
-  };
+  uploadResult?: ChatInputAttachment;
   error?: string;
+}
+
+function ExistingAttachmentPreview({
+  attachment,
+  onRemove,
+}: {
+  attachment: ChatInputAttachment;
+  onRemove: () => void;
+}) {
+  const isImage = attachment.mimeType?.startsWith('image/');
+  const { resolvedUrl, isResolving } = useAttachmentUrl(attachment.url);
+
+  const ext = attachment.originalName?.split('.').pop()?.toUpperCase() ?? 'FILE';
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="group relative bg-muted rounded-lg overflow-hidden border border-border hover:border-border/80 shadow-md"
+    >
+      {isImage ? (
+        <div className="relative">
+          <img
+            src={resolvedUrl || ''}
+            alt={attachment.originalName}
+            className="w-20 h-20 object-cover bg-muted animate-in"
+          />
+          {isResolving && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/60">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            </div>
+          )}
+          <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-transparent" />
+          <div className="absolute bottom-1 left-1.5 right-1.5 text-xs">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="text-foreground font-medium truncate cursor-default">{attachment.originalName}</p>
+              </TooltipTrigger>
+              <TooltipContent side="bottom"><p>{attachment.originalName}</p></TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="w-20 h-20 flex items-center justify-center p-2">
+            <FileText className={cn(
+              "h-8 w-8",
+              attachment.mimeType?.includes('pdf') ? 'text-red-400' :
+                (attachment.mimeType?.includes('doc') || attachment.mimeType?.includes('text')) ? 'text-blue-400' :
+                  'text-muted-foreground'
+            )} />
+          </div>
+          <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-transparent" />
+          <div className="absolute bottom-1 left-1.5 right-1.5 text-xs">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="text-white font-medium truncate cursor-default">{attachment.originalName}</p>
+              </TooltipTrigger>
+              <TooltipContent side="bottom"><p>{attachment.originalName}</p></TooltipContent>
+            </Tooltip>
+          </div>
+          <div className="absolute top-1 left-1 bg-card/80 px-1.5 py-0.5 rounded-sm text-xs font-mono text-muted-foreground">
+            {ext}
+          </div>
+        </>
+      )}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={onRemove}
+            className="absolute top-1 right-1 w-6 h-6 text-foreground rounded-full bg-muted flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg z-20"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent><p>Remove file</p></TooltipContent>
+      </Tooltip>
+    </motion.div>
+  );
 }
 
 export function ChatInput({
@@ -117,9 +206,12 @@ export function ChatInput({
   allowanceResetTime = null,
   isLoadingAllowance = false,
   canUploadFile: canUploadFileProp,
+  initialValue,
+  existingAttachments,
+  onCancel,
   ...props
 }: ChatInputProps) {
-  const [inputValue, setInputValue] = useState("");
+  const [inputValue, setInputValue] = useState(initialValue ?? "");
   const [isRecording, setIsRecording] = useState(false);
   const [showAttachments, setShowAttachments] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
@@ -131,6 +223,7 @@ export function ChatInput({
   const [isDragging, setIsDragging] = useState(false);
   const [isMobileModelDrawerOpen, setIsMobileModelDrawerOpen] = useState(false);
   const [isMobileAdvancedDrawerOpen, setIsMobileAdvancedDrawerOpen] = useState(false);
+  const [keptAttachments, setKeptAttachments] = useState(existingAttachments ?? []);
   const isMobile = useIsMobile();
   const attachedFilesRef = useRef<AttachedFile[]>([]);
   const dragCounterRef = useRef(0);
@@ -170,18 +263,21 @@ export function ChatInput({
   }, []);
   // #endregion
 
+  const keptAttachmentsCount = keptAttachments.length;
+
   // Handle dynamic height of attachment preview
   useLayoutEffect(() => {
     attachedFilesRef.current = attachedFiles;
 
-    if (attachedFiles.length > 0) {
+    const hasAnyAttachments = attachedFiles.length > 0 || keptAttachmentsCount > 0;
+    if (hasAnyAttachments) {
       if (innerAttachmentsRef.current) {
         setAnimatedHeight(innerAttachmentsRef.current.scrollHeight);
       }
     } else {
       setAnimatedHeight(0);
     }
-  }, [attachedFiles]);
+  }, [attachedFiles, keptAttachmentsCount]);
 
   // Click outside handler to close dropdowns
   useEffect(() => {
@@ -206,7 +302,7 @@ export function ChatInput({
   // Compute upload states (used in processFiles and canSubmit)
   const hasUploadsInProgress = attachedFiles.some(f => f.uploadStatus === 'pending' || f.uploadStatus === 'uploading');
   const hasFailedUploads = attachedFiles.some(f => f.uploadStatus === 'error');
-  const isAtFileLimit = attachedFiles.length >= MAX_FILES;
+  const isAtFileLimit = attachedFiles.length + keptAttachmentsCount >= MAX_FILES;
   const characterCount = inputValue.length;
   const isNearLimit = maxInputCharacterLength ? characterCount >= maxInputCharacterLength * 0.9 : false;
   const isOverLimit = maxInputCharacterLength ? characterCount > maxInputCharacterLength : false;
@@ -219,7 +315,8 @@ export function ChatInput({
       : isAtFileLimit
       ? `${attachedFiles.length}/${MAX_FILES} files attached`
       : null;
-  const canSubmit = inputValue.trim().length > 0 && !isLoading && !isAiGenerating && !isLoadingAllowance && !isOverLimit && !hasUploadsInProgress && !hasFailedUploads && hasAllowance;
+  const hasContent = inputValue.trim().length > 0;
+  const canSubmit = hasContent && !isLoading && !isAiGenerating && !isLoadingAllowance && !isOverLimit && !hasUploadsInProgress && !hasFailedUploads && hasAllowance;
 
   const showFileUploadBlockedToast = useCallback(() => {
     toast.warning('File upload unavailable', {
@@ -331,7 +428,7 @@ export function ChatInput({
     }
 
     // Enforce maximum file count limit
-    const currentCount = currentAttachedFiles.length;
+    const currentCount = currentAttachedFiles.length + keptAttachmentsCount;
     const availableSlots = MAX_FILES - currentCount;
     
     if (availableSlots <= 0) {
@@ -448,10 +545,7 @@ export function ChatInput({
   };
 
   const handleSubmit = useCallback(async () => {
-    if (!inputValue.trim() || isLoading || isAiGenerating || isLoadingAllowance || !hasAllowance || isOverLimit) return;
-
-    const hasUploadsInProgress = attachedFiles.some(f => f.uploadStatus === 'pending' || f.uploadStatus === 'uploading');
-    const hasFailedUploads = attachedFiles.some(f => f.uploadStatus === 'error');
+    if (!hasContent || isLoading || isAiGenerating || isLoadingAllowance || !hasAllowance || isOverLimit) return;
 
     if (hasUploadsInProgress) {
       setUploadError('Please wait for all files to finish uploading.');
@@ -464,12 +558,16 @@ export function ChatInput({
     }
 
     try {
-      const processedAttachments = attachedFiles
+      const keptExisting = keptAttachments;
+
+      const newAttachments = attachedFiles
         .filter(f => f.uploadStatus === 'success' && f.uploadResult)
         .map(f => f.uploadResult!);
 
-      onSubmit?.(inputValue.trim(), processedAttachments);
-      setInputValue('');
+      const processedAttachments = [...keptExisting, ...newAttachments];
+
+      onSubmit?.(inputValue.trim(), processedAttachments.length > 0 ? processedAttachments : undefined);
+      if (!onCancel) setInputValue('');
 
       // Cleanup blob URLs
       Object.values(filePreviewUrls).forEach(url => {
@@ -490,7 +588,7 @@ export function ChatInput({
       setUploadError(error instanceof Error ? error.message : 'Submit failed');
       // Don't cleanup on error - keep attachments for retry
     }
-  }, [inputValue, isLoading, isAiGenerating, isLoadingAllowance, hasAllowance, isOverLimit, onSubmit, attachedFiles, filePreviewUrls]);
+  }, [inputValue, isLoading, isAiGenerating, isLoadingAllowance, hasAllowance, isOverLimit, onSubmit, attachedFiles, filePreviewUrls, hasContent, hasUploadsInProgress, hasFailedUploads, keptAttachments, onCancel]);
 
   const inputModality = useInputModality()
 
@@ -501,6 +599,11 @@ export function ChatInput({
         handleSubmit();
       }
     } else if (event.key === 'Escape') {
+      if (onCancel) {
+        event.preventDefault();
+        onCancel();
+        return;
+      }
       setShowAttachments(false);
       setShowSuggestions(false);
       // Cancels an active drag-and-drop operation
@@ -832,7 +935,7 @@ export function ChatInput({
           <div className="flex flex-col w-full">
             {/* Enhanced attached files preview */}
             <AnimatePresence>
-              {attachedFiles.length > 0 && (
+              {(attachedFiles.length > 0 || keptAttachments.length > 0) && (
                 <motion.div
                   // FIX: Added marginBottom to animation to prevent layout shift
                   initial={{ opacity: 0, height: 0, marginBottom: 0 }}
@@ -846,6 +949,15 @@ export function ChatInput({
                       layout
                       className="flex flex-wrap gap-3"
                     >
+                      {keptAttachments.map((att) => {
+                        return (
+                          <ExistingAttachmentPreview
+                            key={att.url}
+                            attachment={att}
+                            onRemove={() => setKeptAttachments(prev => prev.filter(a => a.url !== att.url))}
+                          />
+                        );
+                      })}
                       {attachedFiles.map(({ id, file, uploadStatus, error }) => {
                         const previewUrl = filePreviewUrls[id];
                         const FileIcon = getFileIcon(file);
@@ -1279,6 +1391,14 @@ export function ChatInput({
                   </TooltipContent>
                 </Tooltip> */}
 
+                {onCancel && (
+                  <button
+                    onClick={onCancel}
+                    className="h-9 text-sm px-4 rounded-xl bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
                 {isAiGenerating ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1311,7 +1431,7 @@ export function ChatInput({
                             : "bg-muted text-muted-foreground cursor-not-allowed"
                         )}
                       >
-                        {isLoading ? (
+                        {!onCancel && isLoading ? (
                           <div className="w-5 h-5 border-t-2 border-primary-foreground rounded-full animate-spin"></div>
                         ) : (
                           <ArrowUp className="size-5" />

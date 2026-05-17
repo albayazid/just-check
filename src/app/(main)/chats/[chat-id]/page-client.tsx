@@ -79,9 +79,9 @@ export default function ChatPageClient() {
           }
         );
       }}
-      onSubmitEditedMessage={({ text, previousMessageId, currentUIModelId, sendMessage }) => {
+      onSubmitEditedMessage={({ parts, previousMessageId, currentUIModelId, sendMessage }) => {
         sendMessage(
-          { parts: [{ type: 'text', text }] },
+          { parts },
           {
             body: { UIModelId: currentUIModelId, previousMessageId },
           }

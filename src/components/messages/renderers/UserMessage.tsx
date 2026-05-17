@@ -1,7 +1,7 @@
 'use client';
 
-import { memo, useState, useCallback, useEffect, useRef } from 'react';
-import { UIMessage } from 'ai';
+import { memo, useState, useCallback } from 'react';
+import { UIMessage, type TextUIPart, type FileUIPart } from 'ai';
 import { Copy, Check, Pencil, X, Loader2, ArrowUp, FileText, XIcon, Download } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Overlay, OverlayClose, OverlayContent, OverlayDescription, OverlayTitle } from '@/components/custom-ui/overlay';
@@ -11,17 +11,24 @@ import { cn } from '@/lib/utils';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { toast } from 'sonner';
 import { BranchIndicator } from './BranchIndicator';
+import { ChatInput } from '@/components/chat-input';
+
+export type EditMessagePart = TextUIPart | FileUIPart;
 
 interface UserMessageProps {
   message: UIMessage;
   /** Parent resolves on the chat page (tree / siblingInfo); do not rely on stream metadata alone. */
-  onEdit?: (text: string) => void;
+  onEdit?: (parts: EditMessagePart[]) => void;
   branchCurrentIndex?: number;
   branchTotalSiblings?: number;
   onBranchPrevious?: () => void;
   onBranchNext?: () => void;
   isGenerating?: boolean;
   isLoading?: boolean;
+  selectedUIModelId: string;
+  onUIModelChange: (uiModelId: string) => void;
+  hasAllowance?: boolean;
+  isLoadingAllowance?: boolean;
 }
 
 /**
@@ -276,6 +283,10 @@ export const UserMessage = memo(function UserMessage({
   onBranchNext,
   isGenerating = false,
   isLoading = false,
+  selectedUIModelId,
+  onUIModelChange,
+  hasAllowance,
+  isLoadingAllowance,
 }: UserMessageProps) {
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
@@ -309,97 +320,42 @@ export const UserMessage = memo(function UserMessage({
   };
 
 
-  // Edit state (inlined from useMessageEdit hook)
+  // Edit state
   const [isEditing, setIsEditing] = useState(false);
-  const [editText, setEditText] = useState('');
-  const editInputRef = useRef<HTMLTextAreaElement>(null);
 
   const startEditing = useCallback(() => {
-    const parts = message.parts.filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text');
-    setEditText(parts.map((p) => p.text).join('\n'));
     setIsEditing(true);
-  }, [message.parts]);
-
-  const cancelEditing = useCallback(() => {
-    setIsEditing(false);
-    setEditText('');
   }, []);
-
-  const submitEdit = useCallback(() => {
-    if (editText.trim() && onEdit) {
-      onEdit(editText.trim());
-      setIsEditing(false);
-      setEditText('');
-    }
-  }, [editText, onEdit]);
-
-  useEffect(() => {
-    if (isEditing && editInputRef.current) {
-      editInputRef.current.focus();
-      const len = editInputRef.current.value.length;
-      editInputRef.current.setSelectionRange(len, len);
-    }
-  }, [isEditing]);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (isEditing && editInputRef.current) {
-      const textarea = editInputRef.current;
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
-    }
-  }, [editText, isEditing]);
 
   const hasBranch = branchTotalSiblings !== undefined && branchTotalSiblings > 1;
 
-  // Inline edit mode
+  // Inline edit mode using ChatInput
   if (isEditing) {
     return (
-      <div className="flex justify-end mb-4">
-        <div className="max-w-[70%] w-full">
-          <div className="bg-primary/10 border border-primary/30 rounded-lg p-3">
-            <textarea
-              ref={editInputRef}
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.preventDefault();
-                  cancelEditing();
-                } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  submitEdit();
-                }
-              }}
-              rows={1}
-              className="w-full bg-transparent text-foreground text-sm leading-relaxed resize-none outline-none placeholder:text-muted-foreground overflow-y-auto"
-              placeholder="Edit your message..."
-            />
-          </div>
-          <div className="flex items-center justify-end gap-2 mt-2">
-            <span className="text-xs text-muted-foreground mr-auto">
-              Esc to cancel · Ctrl+Enter to send
-            </span>
-            <button
-              onClick={cancelEditing}
-              className="h-9 text-sm px-4 rounded-xl bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={submitEdit}
-              disabled={!editText.trim()}
-              className={cn(
-                'h-9 text-sm px-4 rounded-xl flex items-center gap-1.5 transition-colors',
-                editText.trim()
-                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                  : 'bg-muted text-muted-foreground cursor-not-allowed'
-              )}
-            >
-              <ArrowUp className="h-4 w-4" />
-              Send
-            </button>
-          </div>
+      <div className="mb-4">
+        <div className="w-full">
+          <ChatInput
+            initialValue={textParts.map(p => p.text).join('\n')}
+            existingAttachments={[...imageParts, ...fileParts].map(p => ({
+              url: p.url,
+              originalName: p.filename ?? 'file',
+              mimeType: p.mediaType ?? 'application/octet-stream',
+            }))}
+            onSubmit={(text, attachments) => {
+              const parts: EditMessagePart[] = [];
+              if (text) parts.push({ type: 'text', text });
+              attachments?.forEach(a => parts.push({ type: 'file', url: a.url, mediaType: a.mimeType, filename: a.originalName }));
+              onEdit?.(parts);
+              setIsEditing(false);
+            }}
+            onCancel={() => setIsEditing(false)}
+            placeholder="Edit your message..."
+            hasAllowance={hasAllowance}
+            isLoadingAllowance={isLoadingAllowance}
+            isLoading={isLoading || isGenerating}
+            selectedUIModelId={selectedUIModelId}
+            onUIModelChange={onUIModelChange}
+          />
         </div>
       </div>
     );
