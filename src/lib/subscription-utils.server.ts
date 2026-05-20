@@ -47,10 +47,10 @@ export const PLAN_ALLOWANCES: Record<string, number> = {
  * Maximum number of non-deleted folders a user can have.
  */
 export const FOLDER_LIMITS: Record<string, number> = {
-  free: 1,
-  go_monthly: 5,
-  plus_monthly: 20,
-  pro_monthly: 50,
+  free: 2,
+  go_monthly: 10,
+  plus_monthly: 50,
+  pro_monthly: 200,
 };
 
 export function getFolderLimit(planId: string): number {
