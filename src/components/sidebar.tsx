@@ -97,7 +97,13 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isMobileSidebarOpen, onMobile
 
   // Folder state
   const [foldersExpanded, setFoldersExpanded] = useState(false);
-  const { data: foldersData, isPending: foldersLoading } = useFolders({ enabled: foldersExpanded });
+
+  // Move to folder dialog state
+  const [moveToFolderDialogOpen, setMoveToFolderDialogOpen] = useState(false);
+  const [conversationToMove, setConversationToMove] = useState<string | null>(null);
+
+  const shouldFetchFolders = foldersExpanded || moveToFolderDialogOpen;
+  const { data: foldersData, isPending: foldersLoading } = useFolders({ enabled: shouldFetchFolders });
   const createFolder = useCreateFolder();
   const updateFolder = useUpdateFolder();
   const deleteFolder = useDeleteFolder();
@@ -112,10 +118,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isMobileSidebarOpen, onMobile
   // Folder delete confirmation
   const [deleteFolderDialogOpen, setDeleteFolderDialogOpen] = useState(false);
   const [folderToDelete, setFolderToDelete] = useState<string | null>(null);
-
-  // Move to folder dialog state
-  const [moveToFolderDialogOpen, setMoveToFolderDialogOpen] = useState(false);
-  const [conversationToMove, setConversationToMove] = useState<string | null>(null);
 
   const folders = foldersData?.folders || [];
   const canPin = pinnedCountData?.canPin ?? true;
@@ -1053,7 +1055,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isMobileSidebarOpen, onMobile
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-4 max-h-[300px] overflow-y-auto">
-            {folders.length === 0 ? (
+            {foldersLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                <span className="ml-2 text-sm text-muted-foreground">Loading folders...</span>
+              </div>
+            ) : folders.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
                 No folders yet. Create one first.
               </p>
