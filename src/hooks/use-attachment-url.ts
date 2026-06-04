@@ -2,40 +2,18 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-
-const ATTACHMENT_URL_PREFIX = 'attachment://';
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Checks if a URL is a valid attachment URL (attachment://{uuid})
- */
-export function isAttachmentUrl(url: string): boolean {
-  if (!url.startsWith(ATTACHMENT_URL_PREFIX)) return false;
-  const fileId = url.slice(ATTACHMENT_URL_PREFIX.length);
-  return UUID_REGEX.test(fileId);
-}
-
-/**
- * Extracts the file ID from an attachment URL
- * Format: attachment://{fileId}
- */
-export function extractFileIdFromAttachmentUrl(url: string): string {
-  if (!isAttachmentUrl(url)) {
-    throw new Error('Invalid attachment URL');
-  }
-  return url.slice(ATTACHMENT_URL_PREFIX.length);
-}
+import { isAttachmentUrl, extractFileIdFromAttachmentUrl } from '@/lib/storage/attachment-url-utils';
 
 /**
  * Fetcher function for resolving attachment URLs
  */
-async function resolveAttachmentFetcher(fileId: string): Promise<string> {
+async function resolveAttachmentFetcher(fileId: string, conversationId: string): Promise<string> {
   const response = await fetch('/api/attachments/resolve', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ fileId }),
+    body: JSON.stringify({ fileId, conversationId }),
   });
 
   if (!response.ok) {
@@ -64,7 +42,7 @@ interface UseAttachmentUrlResult {
  * - Retry: Automatic retry on failure (3 attempts by default)
  * - Stale-while-revalidate: Shows cached data while refreshing in background
  */
-export function useAttachmentUrl(initialUrl: string | undefined): UseAttachmentUrlResult {
+export function useAttachmentUrl(initialUrl: string | undefined, conversationId?: string): UseAttachmentUrlResult {
   // Determine if this is an attachment URL that needs resolution
   const isAttachment = useMemo(() => {
     return initialUrl !== undefined && isAttachmentUrl(initialUrl);
@@ -81,9 +59,9 @@ export function useAttachmentUrl(initialUrl: string | undefined): UseAttachmentU
 
   // Use React Query for data fetching with caching
   const queryResult = useQuery({
-    queryKey: ['attachment-url', fileId],
-    queryFn: () => resolveAttachmentFetcher(fileId!),
-    enabled: !!fileId, // Only run query if we have a valid fileId
+    queryKey: ['attachment-url', fileId, conversationId],
+    queryFn: () => resolveAttachmentFetcher(fileId!, conversationId!),
+    enabled: !!fileId && !!conversationId, // Only run query if we have both fileId and conversationId
     staleTime: 23 * 60 * 60 * 1000, // 23 hours - signed URLs expire in 24 hours
     gcTime: 24 * 60 * 60 * 1000, // 24 hours garbage collection (formerly cacheTime)
     retry: 3,

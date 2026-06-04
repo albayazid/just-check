@@ -363,6 +363,7 @@ export function ChatPageShell({
                     <MessageRenderer
                       key={message.id}
                       message={message}
+                      conversationId={chatId}
                       isStreaming={isGenerating && isLastMessage}
                       isLoading={isLoading}
                       isGenerating={isGenerating}

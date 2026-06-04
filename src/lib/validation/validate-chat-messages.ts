@@ -1,6 +1,6 @@
 import { safeValidateUIMessages, type UIMessage } from 'ai';
 import { SUPPORTED_FILE_TYPES } from '@/lib/storage/file-validation';
-import { isAttachmentUrl } from '@/lib/storage/attachment-resolver';
+import { isAttachmentUrl } from '@/lib/storage/attachment-url-utils';
 
 const MAX_FILES_PER_MESSAGE = 5;
 

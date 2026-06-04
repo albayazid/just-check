@@ -8,6 +8,7 @@ import { AIMessage } from './AIMessage';
 
 interface MessageRendererProps {
   message: UIMessage;
+  conversationId: string;
   isStreaming?: boolean;
   isLoading?: boolean;
   isGenerating?: boolean;
@@ -25,6 +26,7 @@ interface MessageRendererProps {
 
 export const MessageRenderer = memo(function MessageRenderer({
   message,
+  conversationId,
   isStreaming = false,
   isLoading = false,
   isGenerating = false,
@@ -45,6 +47,7 @@ export const MessageRenderer = memo(function MessageRenderer({
       return (
         <UserMessage
           message={message}
+          conversationId={conversationId}
           onEdit={onEdit}
           branchCurrentIndex={branchCurrentIndex}
           branchTotalSiblings={branchTotalSiblings}

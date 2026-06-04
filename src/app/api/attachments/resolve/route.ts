@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { resolveAttachmentUrl } from '@/lib/storage/file-storage-service';
+import { resolveAttachmentUrlForConversation } from '@/lib/storage/file-storage-service';
 import { attachmentResolveRatelimit } from '@/lib/ratelimit';
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { UUID_REGEX } from '@/lib/uuid-utils';
 
 /**
  * POST /api/attachments/resolve
@@ -23,14 +22,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Too many requests. Please wait.' }, { status: 429 });
     }
 
-    const { fileId } = await req.json();
+    const { fileId, conversationId } = await req.json();
 
     if (!fileId || typeof fileId !== 'string' || !UUID_REGEX.test(fileId)) {
       return NextResponse.json({ error: 'Invalid or missing file ID' }, { status: 400 });
     }
 
-    // Resolve the attachment URL
-    const resolvedUrl = await resolveAttachmentUrl(fileId, clerkUserId);
+    if (!conversationId || typeof conversationId !== 'string' || !UUID_REGEX.test(conversationId)) {
+      return NextResponse.json({ error: 'Invalid or missing conversation ID' }, { status: 400 });
+    }
+
+    // Resolve the attachment URL scoped to conversation access
+    const resolvedUrl = await resolveAttachmentUrlForConversation(fileId, clerkUserId, conversationId);
 
     return NextResponse.json({ url: resolvedUrl });
   } catch (error) {

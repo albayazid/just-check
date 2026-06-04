@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getMessagesForConversation, type AssistantResponseMetadata } from '@/lib/conversation-history';
 import { getSupabaseAdminClient } from '@/lib/supabase-client.server';
+import { UUID_REGEX } from '@/lib/uuid-utils';
 import type { ClientMessageMetadata } from '@/lib/conversation-history/types';
 
 /**
@@ -34,8 +35,7 @@ export async function GET(
         const { conversationId } = await params;
 
         // 1. Validate UUID format
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(conversationId)) {
+        if (!UUID_REGEX.test(conversationId)) {
             return NextResponse.json({ error: 'Invalid conversation ID format' }, { status: 400 });
         }
 

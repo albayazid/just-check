@@ -1,6 +1,6 @@
 import type { UIMessage, UIMessagePart, UploadedFile } from '@/lib/conversation-history/types';
-import { getFileUploadForUser, resolveAttachmentUrl } from './file-storage-service';
-import { extractFileIdFromAttachmentUrl, isAttachmentUrl } from './attachment-resolver';
+import { getFileUploadForConversation, resolveFromStoragePath } from './file-storage-service';
+import { extractFileIdFromAttachmentUrl, isAttachmentUrl } from './attachment-url-utils';
 import {
   formatExtractedFileForModel,
   isImageMimeType,
@@ -31,7 +31,8 @@ function getModelContext(file: UploadedFile): FileExtractionMetadata | undefined
 
 async function preprocessFilePart(
   part: FileUIPart,
-  userId: string
+  userId: string,
+  conversationId: string
 ): Promise<FileUIPart | TextUIPart | null> {
   if (!isAttachmentUrl(part.url)) {
     if (part.mediaType.startsWith('image/')) {
@@ -53,10 +54,12 @@ async function preprocessFilePart(
 
   try {
     const fileId = extractFileIdFromAttachmentUrl(part.url);
-    const file = await getFileUploadForUser(fileId, userId);
+    const file = await getFileUploadForConversation(fileId, userId, conversationId);
 
     if (isImageMimeType(file.mime_type)) {
-      const resolvedUrl = await resolveAttachmentUrl(fileId, userId);
+      // We already verified access via getFileUploadForConversation above,
+      // so we can skip the redundant access RPC and resolve from the verified path.
+      const resolvedUrl = await resolveFromStoragePath(fileId, file.storage_path);
       return {
         ...part,
         url: resolvedUrl,
@@ -84,7 +87,8 @@ async function preprocessFilePart(
 
 export async function preprocessMessageAttachmentsForModel(
   message: UIMessage,
-  userId: string
+  userId: string,
+  conversationId: string
 ): Promise<UIMessage> {
   if (message.role !== 'user') {
     return message;
@@ -96,7 +100,7 @@ export async function preprocessMessageAttachmentsForModel(
         return part;
       }
 
-      return preprocessFilePart(part, userId);
+      return preprocessFilePart(part, userId, conversationId);
     })
   );
 
@@ -108,7 +112,8 @@ export async function preprocessMessageAttachmentsForModel(
 
 export async function preprocessMessagesAttachmentsForModel(
   messages: UIMessage[],
-  userId: string
+  userId: string,
+  conversationId: string
 ): Promise<UIMessage[]> {
-  return Promise.all(messages.map((message) => preprocessMessageAttachmentsForModel(message, userId)));
+  return Promise.all(messages.map((message) => preprocessMessageAttachmentsForModel(message, userId, conversationId)));
 }

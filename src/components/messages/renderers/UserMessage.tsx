@@ -17,6 +17,7 @@ export type EditMessagePart = TextUIPart | FileUIPart;
 
 interface UserMessageProps {
   message: UIMessage;
+  conversationId: string;
   /** Parent resolves on the chat page (tree / siblingInfo); do not rely on stream metadata alone. */
   onEdit?: (parts: EditMessagePart[]) => void;
   branchCurrentIndex?: number;
@@ -37,12 +38,14 @@ interface UserMessageProps {
  */
 const MessageImage = memo(function MessageImage({
   url,
-  filename
+  filename,
+  conversationId
 }: {
   url: string;
-  filename?: string
+  filename?: string;
+  conversationId: string;
 }) {
-  const { resolvedUrl, isResolving, error } = useAttachmentUrl(url);
+  const { resolvedUrl, isResolving, error } = useAttachmentUrl(url, conversationId);
   const [open, setOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -148,10 +151,12 @@ const MessageImage = memo(function MessageImage({
 
 const MessageFile = memo(function MessageFile({
   part,
+  conversationId,
 }: {
-  part: Extract<UIMessage['parts'][number], { type: 'file' }>
+  part: Extract<UIMessage['parts'][number], { type: 'file' }>;
+  conversationId: string;
 }) {
-  const { resolvedUrl, isResolving, error } = useAttachmentUrl(part.url);
+  const { resolvedUrl, isResolving, error } = useAttachmentUrl(part.url, conversationId);
   const href = resolvedUrl;
   const fileName = part.filename || 'Attached file';
   const [open, setOpen] = useState(false);
@@ -276,6 +281,7 @@ const MessageFile = memo(function MessageFile({
 
 export const UserMessage = memo(function UserMessage({
   message,
+  conversationId,
   onEdit,
   branchCurrentIndex,
   branchTotalSiblings,
@@ -336,6 +342,7 @@ export const UserMessage = memo(function UserMessage({
         <div className="w-full">
           <ChatInput
             initialValue={textParts.map(p => p.text).join('\n')}
+            conversationId={conversationId}
             existingAttachments={[...imageParts, ...fileParts].map(p => ({
               url: p.url,
               originalName: p.filename ?? 'file',
@@ -373,12 +380,14 @@ export const UserMessage = memo(function UserMessage({
                 key={`image-${index}`}
                 url={part.url}
                 filename={part.filename}
+                conversationId={conversationId}
               />
             ))}
             {fileParts.map((part, index) => (
               <MessageFile
                 key={`file-${index}`}
                 part={part}
+                conversationId={conversationId}
               />
             ))}
           </div>

@@ -25,6 +25,8 @@ import { buildSystemPrompt } from '@/lib/system-prompt';
 import { DEFAULT_AI_CUSTOMIZATION_SETTINGS, type AICustomizationSettings } from '@/types/settings';
 import { getSupabaseAdminClient } from '@/lib/supabase-client.server';
 import { preprocessMessagesAttachmentsForModel } from '@/lib/storage/message-attachment-preprocessor';
+import { validateFileAccess } from '@/lib/storage/file-storage-service';
+import { isAttachmentUrl, extractFileIdFromAttachmentUrl } from '@/lib/storage/attachment-url-utils';
 import { validateChatMessages } from '@/lib/validation/validate-chat-messages';
 
 // Import raw executors for tool charging
@@ -194,6 +196,24 @@ export async function POST(req: Request) {
     // Save only if it's a user message and not a regeneration
     let savedUserMessage: StoredMessage | null = null;
     if (isNewUserTurn && !isRegeneration) {
+      // Validate file ownership: ensure the user owns all files they're attaching,
+      // or the files are already referenced in this conversation.
+      const fileParts = lastMessageInArray.parts?.filter(
+        (p): p is Extract<typeof p, { type: 'file' }> =>
+          p.type === 'file' && typeof p.url === 'string' && isAttachmentUrl(p.url)
+      ) ?? [];
+
+      if (fileParts.length > 0) {
+        const fileIds = [...new Set(fileParts.map((p) => extractFileIdFromAttachmentUrl(p.url)))];
+        const allowed = await validateFileAccess(fileIds, clerkUserId, conversationId);
+        if (!allowed) {
+          return NextResponse.json(
+            { error: 'File not found or access denied' },
+            { status: 403 }
+          );
+        }
+      }
+
       // Use client-provided previousMessageId for branching support.
       // Normal reply: client passes the last message's ID in the current path.
       // Edit/branch: client passes the parent of the message being edited.
@@ -251,7 +271,7 @@ export async function POST(req: Request) {
     // =========================================================================
     // Keep chat state as stable attachment:// file parts, but send the model either
     // a fresh image URL or extracted text context for non-image files.
-    const attachmentResolvedMessages = await preprocessMessagesAttachmentsForModel(messages, clerkUserId);
+    const attachmentResolvedMessages = await preprocessMessagesAttachmentsForModel(messages, clerkUserId, conversationId);
     
     const modelMessages = await convertToModelMessages(attachmentResolvedMessages, {
       // safety net for incomplete tool calls. incomplete tool call may cause errors. 

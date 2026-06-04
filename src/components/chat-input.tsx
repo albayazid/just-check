@@ -81,6 +81,8 @@ interface ChatInputProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onS
   maxInputCharacterLength?: number;
   /** The user's plan ID. `undefined` while loading. */
   planId?: string | undefined;
+  /** Conversation ID for resolving existing attachments in edit mode */
+  conversationId?: string;
   /** Whether user has remaining allowance to send messages */
   hasAllowance?: boolean | undefined;
   /** Percentage of allowance remaining (0-100) */
@@ -110,12 +112,14 @@ interface AttachedFile {
 function ExistingAttachmentPreview({
   attachment,
   onRemove,
+  conversationId,
 }: {
   attachment: ChatInputAttachment;
   onRemove: () => void;
+  conversationId?: string;
 }) {
   const isImage = attachment.mimeType?.startsWith('image/');
-  const { resolvedUrl, isResolving } = useAttachmentUrl(attachment.url);
+  const { resolvedUrl, isResolving } = useAttachmentUrl(attachment.url, conversationId);
 
   const ext = attachment.originalName?.split('.').pop()?.toUpperCase() ?? 'FILE';
 
@@ -209,6 +213,7 @@ export function ChatInput({
   initialValue,
   existingAttachments,
   onCancel,
+  conversationId,
   ...props
 }: ChatInputProps) {
   const [inputValue, setInputValue] = useState(initialValue ?? "");
@@ -955,6 +960,7 @@ export function ChatInput({
                             key={att.url}
                             attachment={att}
                             onRemove={() => setKeptAttachments(prev => prev.filter(a => a.url !== att.url))}
+                            conversationId={conversationId}
                           />
                         );
                       })}

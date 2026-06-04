@@ -145,8 +145,9 @@ async function cacheSignedUrl(fileId: string, signedUrl: string, expiresInSecond
 }
 
 /**
- * Resolves an attachment:// URL to a fresh signed URL
- * Format: attachment://{fileId}
+ * @deprecated Use resolveAttachmentUrlForConversation instead.
+ * This function uses user-owner-scoped access which doesn't support
+ * shared/group chat scenarios.
  */
 export async function resolveAttachmentUrl(
   fileId: string,
@@ -224,7 +225,9 @@ export async function recordFileUpload(
 }
 
 /**
- * Fetches file metadata for a user-owned upload.
+ * @deprecated Use getFileUploadForConversation instead.
+ * This function uses user-owner-scoped access which doesn't support
+ * shared/group chat scenarios.
  */
 export async function getFileUploadForUser(
   fileId: string,
@@ -252,6 +255,97 @@ export async function getFileUploadForUser(
 }
 
 /**
+ * Resolves an attachment URL scoped to conversation access.
+ * Checks: does the requesting user own the conversation, and does
+ * the conversation contain a message referencing this file?
+ */
+export async function resolveAttachmentUrlForConversation(
+  fileId: string,
+  requestingUserId: string,
+  conversationId: string
+): Promise<string> {
+  const supabase = getSupabaseAdminClient();
+  const { data, error } = await supabase
+    .rpc('resolve_file_for_conversation', {
+      p_file_id: fileId,
+      p_clerk_user_id: requestingUserId,
+      p_conversation_id: conversationId,
+    })
+    .single();
+
+  const file = data as UploadedFile | null;
+
+  if (error || !file) {
+    console.error('Attachment resolution failed:', { fileId, conversationId, error });
+    throw new Error('File not found or access denied');
+  }
+
+  return resolveFromStoragePath(fileId, file.storage_path);
+}
+
+/**
+ * Resolves a signed URL for a previously authorized storage path.
+ *
+ * @remarks
+ * Security-sensitive helper. The `storagePath` value must come only from a
+ * trusted server-side source, such as a database row returned after an
+ * access-controlled lookup.
+ *
+ * This function does not verify conversation membership or file ownership.
+ * Callers must perform authorization before invoking it.
+ *
+ * Prefer `resolveAttachmentUrlForConversation` for user-facing attachment
+ * requests, because it performs the required conversation-scoped access check.
+ *
+ * @param storagePath - A trusted storage path that has already passed authorization.
+ * @returns A signed URL for accessing the object.
+ */
+export async function resolveFromStoragePath(
+  fileId: string,
+  storagePath: string
+): Promise<string> {
+  const cachedUrl = await getCachedSignedUrl(fileId);
+  if (cachedUrl) {
+    return cachedUrl;
+  }
+
+  const signedUrl = await createSignedUrl(storagePath);
+  await cacheSignedUrl(fileId, signedUrl, URL_EXPIRY_SECONDS);
+
+  return signedUrl;
+}
+
+/**
+ * Fetches file metadata scoped to conversation access.
+ * Same access check as resolveAttachmentUrlForConversation but returns
+ * the full file record (needed for model preprocessing — mime_type, extracted_data).
+ */
+export async function getFileUploadForConversation(
+  fileId: string,
+  requestingUserId: string,
+  conversationId: string
+): Promise<UploadedFile> {
+  const supabase = getSupabaseAdminClient();
+
+  const { data, error } = await supabase
+    .rpc('resolve_file_for_conversation', {
+      p_file_id: fileId,
+      p_clerk_user_id: requestingUserId,
+      p_conversation_id: conversationId,
+    })
+    .single();
+
+  const file = data as UploadedFile | null;
+
+  if (error || !file) {
+    console.error('File metadata lookup failed:', { fileId, conversationId, error });
+    throw new Error('File not found or access denied');
+  }
+
+  return file;
+}
+
+/**
  * Soft deletes a file (marks as deleted, doesn't remove from storage)
  */
 export async function softDeleteFile(fileId: string, userId: string): Promise<void> {
@@ -266,6 +360,39 @@ export async function softDeleteFile(fileId: string, userId: string): Promise<vo
   if (error) {
     throw new Error(`Failed to delete file: ${error.message}`);
   }
+}
+
+/**
+ * Validates that all file IDs are accessible by the user for a given conversation.
+ * A file is accessible if:
+ *   - The user uploaded it (file_uploads.user_id = clerkUserId)
+ *   - OR it's already referenced in a message in this conversation (for group chat reuse)
+ *
+ * Returns true if ALL files are accessible, false otherwise.
+ * Single batch query — one round trip regardless of file count.
+ */
+export async function validateFileAccess(
+  fileIds: string[],
+  clerkUserId: string,
+  conversationId: string
+): Promise<boolean> {
+  if (fileIds.length === 0) return true;
+
+  const supabase = getSupabaseAdminClient();
+
+  const { data, error } = await supabase
+    .rpc('validate_file_access_for_conversation', {
+      p_file_ids: fileIds,
+      p_clerk_user_id: clerkUserId,
+      p_conversation_id: conversationId,
+    });
+
+  if (error) {
+    console.error('File access validation failed:', error);
+    return false; // Fail closed
+  }
+
+  return data === true;
 }
 
 /**
