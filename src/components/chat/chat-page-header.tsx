@@ -38,9 +38,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useSidebar } from '@/components/ui/sidebar';
 import { DeleteConversationDialog } from '@/components/conversations/delete-conversation-dialog';
 import { MoveToFolderDialog } from '@/components/conversations/move-to-folder-dialog';
+import { ShareButton } from '@/components/chat/share-button';
 
 interface ChatPageHeaderProps {
   chatId: string;
+  /** Leaf message id of the currently visible thread (for "visible thread" share). */
+  currentLeafMessageId: string | null;
 }
 
 /**
@@ -49,7 +52,7 @@ interface ChatPageHeaderProps {
  *
  * Layout: [toggle] [title · inline rename] .... [new-chat mobile] [⋮]
  */
-export default function ChatPageHeader({ chatId }: ChatPageHeaderProps) {
+export default function ChatPageHeader({ chatId, currentLeafMessageId }: ChatPageHeaderProps) {
   const isMobile = useIsMobile();
   const { toggleSidebar } = useSidebar();
   const { data, isPending } = useConversation(chatId);
@@ -198,6 +201,12 @@ export default function ChatPageHeader({ chatId }: ChatPageHeaderProps) {
             </Tooltip>
           </TooltipProvider>
         )}
+
+        <ShareButton
+          conversationId={chatId}
+          conversationTitle={title}
+          currentLeafMessageId={currentLeafMessageId}
+        />
 
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>

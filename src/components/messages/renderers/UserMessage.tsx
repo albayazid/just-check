@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Overlay, OverlayClose, OverlayContent, OverlayDescription, OverlayTitle } from '@/components/custom-ui/overlay';
 import { useIsTouchDevice } from '@/hooks/use-touch-device';
 import { useAttachmentUrl } from '@/hooks/use-attachment-url';
+import { useShareAttachmentUrl } from '@/hooks/use-share-attachment-url';
 import { cn } from '@/lib/utils';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { toast } from 'sonner';
@@ -30,6 +31,8 @@ interface UserMessageProps {
   onUIModelChange: (uiModelId: string) => void;
   hasAllowance?: boolean;
   isLoadingAllowance?: boolean;
+  /** When provided, resolves attachments via the public share endpoint instead of the authenticated one. Also enables readOnly mode. */
+  shareToken?: string;
 }
 
 /**
@@ -39,13 +42,19 @@ interface UserMessageProps {
 const MessageImage = memo(function MessageImage({
   url,
   filename,
-  conversationId
+  conversationId,
+  shareToken,
 }: {
   url: string;
   filename?: string;
   conversationId: string;
+  shareToken?: string;
 }) {
-  const { resolvedUrl, isResolving, error } = useAttachmentUrl(url, conversationId);
+  // When shareToken is present, disable the auth hook (pass empty conversationId) and use the share hook.
+  // Both hooks have internal `enabled` guards, so the disabled one creates an idle observer with no network request.
+  const authResult = useAttachmentUrl(url, shareToken ? '' : conversationId);
+  const shareResult = useShareAttachmentUrl(url, shareToken ?? '');
+  const { resolvedUrl, isResolving, error } = shareToken ? shareResult : authResult;
   const [open, setOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -152,11 +161,15 @@ const MessageImage = memo(function MessageImage({
 const MessageFile = memo(function MessageFile({
   part,
   conversationId,
+  shareToken,
 }: {
   part: Extract<UIMessage['parts'][number], { type: 'file' }>;
   conversationId: string;
+  shareToken?: string;
 }) {
-  const { resolvedUrl, isResolving, error } = useAttachmentUrl(part.url, conversationId);
+  const authResult = useAttachmentUrl(part.url, shareToken ? '' : conversationId);
+  const shareResult = useShareAttachmentUrl(part.url, shareToken ?? '');
+  const { resolvedUrl, isResolving, error } = shareToken ? shareResult : authResult;
   const href = resolvedUrl;
   const fileName = part.filename || 'Attached file';
   const [open, setOpen] = useState(false);
@@ -293,7 +306,9 @@ export const UserMessage = memo(function UserMessage({
   onUIModelChange,
   hasAllowance,
   isLoadingAllowance,
+  shareToken,
 }: UserMessageProps) {
+  const readOnly = !!shareToken;
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
   const isTouchDevice = useIsTouchDevice();
@@ -381,6 +396,7 @@ export const UserMessage = memo(function UserMessage({
                 url={part.url}
                 filename={part.filename}
                 conversationId={conversationId}
+                shareToken={shareToken}
               />
             ))}
             {fileParts.map((part, index) => (
@@ -388,6 +404,7 @@ export const UserMessage = memo(function UserMessage({
                 key={`file-${index}`}
                 part={part}
                 conversationId={conversationId}
+                shareToken={shareToken}
               />
             ))}
           </div>
@@ -458,7 +475,7 @@ export const UserMessage = memo(function UserMessage({
             </TooltipContent>
           </Tooltip>
 
-          {onEdit && (
+          {!readOnly && onEdit && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button

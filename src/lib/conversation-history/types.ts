@@ -102,6 +102,7 @@ export interface ClientMessageMetadata {
   model_data?: {
     UIModelId: string;
   };
+  [key: string]: unknown;
 }
 // ============================================================================
 // FILE UPLOAD TYPES

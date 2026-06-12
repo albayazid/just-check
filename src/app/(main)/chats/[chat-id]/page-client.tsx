@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ChatPageShell,
@@ -23,6 +23,7 @@ export default function ChatPageClient() {
   const { planId, hasAllowance, remainingPercentage, periodEnd, isLoading: isLoadingAllowance } = useSubscriptionAndAllowanceStatus();
   const { data: messagesData, isPending: isLoadingHistory, isError } = useMessages(chatId);
   const { data: conversationData } = useConversation(chatId);
+  const [visibleLeafMessageId, setVisibleLeafMessageId] = useState<string | null>(null);
 
   useEffect(() => {
     if (conversationData?.title !== undefined) {
@@ -50,7 +51,7 @@ export default function ChatPageClient() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <ChatPageHeader chatId={chatId} />
+      <ChatPageHeader chatId={chatId} currentLeafMessageId={visibleLeafMessageId} />
       {/*
         `min-h-0 flex-1` gives the shell a bounded height so its internal message
         scroller works; the header above is shrink-0 and stays pinned.
@@ -58,6 +59,7 @@ export default function ChatPageClient() {
       <div className="min-h-0 flex-1">
         <ChatPageShell
           chatId={chatId}
+          onVisibleLeafChange={setVisibleLeafMessageId}
           messagesData={messagesData}
           prepareSendMessagesRequest={({ id, messages, body, trigger, messageId }) => ({
             body: { id, messages, trigger, messageId, ...body },

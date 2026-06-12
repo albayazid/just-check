@@ -11,6 +11,8 @@ const isPublicRoute = createRouteMatcher([
   '/sign-up(.*)',
   '/upgrade(.*)',
   '/how-billing-works(.*)',
+  '/share(.*)',          // Public share page
+  '/api/share(.*)',      // Public share API (GET + attachment resolve)
   '/api/webhooks(.*)',
   '/api/health(.*)',
 ])

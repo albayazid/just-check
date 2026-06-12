@@ -30,6 +30,8 @@ interface AIMessageProps {
   onBranchNext?: () => void;
   isLoading?: boolean;
   isGenerating?: boolean;
+  /** When true, hides feedback (like/dislike), regenerate, and info buttons */
+  readOnly?: boolean;
 }
 
 type FeedbackType = 'like' | 'dislike';
@@ -59,6 +61,7 @@ export const AIMessage = memo(function AIMessage({
   onBranchNext,
   isLoading = false,
   isGenerating = false,
+  readOnly = false,
 }: AIMessageProps) {
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
@@ -238,7 +241,7 @@ export const AIMessage = memo(function AIMessage({
           </TooltipContent>
         </Tooltip>
 
-        {onRegenerate && (
+        {!readOnly && onRegenerate && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -259,6 +262,7 @@ export const AIMessage = memo(function AIMessage({
           </Tooltip>
         )}
 
+        {!readOnly && (
         <Tooltip>
           <Popover open={popoverType === 'like'} onOpenChange={(open) => {
             if (open && currentFeedback?.type === 'like') return;
@@ -336,7 +340,9 @@ export const AIMessage = memo(function AIMessage({
             </PopoverContent>
           </Popover>
         </Tooltip>
+        )}
 
+        {!readOnly && (
         <Tooltip>
           <Popover open={popoverType === 'dislike'} onOpenChange={(open) => {
             if (open && currentFeedback?.type === 'dislike') return;
@@ -414,6 +420,7 @@ export const AIMessage = memo(function AIMessage({
             </PopoverContent>
           </Popover>
         </Tooltip>
+        )}
 
         <Tooltip>
           <Popover open={showMetadataPopover} onOpenChange={setShowMetadataPopover}>
@@ -473,6 +480,7 @@ export const AIMessage = memo(function AIMessage({
           </Popover>
         </Tooltip>
 
+        {!readOnly && (
         <Tooltip>
           <TooltipTrigger asChild>
             <button className={cn(
@@ -486,6 +494,7 @@ export const AIMessage = memo(function AIMessage({
             <p>More options</p>
           </TooltipContent>
         </Tooltip>
+        )}
 
         {branchTotalSiblings !== undefined && branchTotalSiblings > 1 && onBranchPrevious && onBranchNext && branchCurrentIndex !== undefined && (
           <div className={cn(

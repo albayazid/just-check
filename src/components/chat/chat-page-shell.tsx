@@ -90,6 +90,7 @@ interface ChatPageShellProps {
   allowanceResetTime: string | null;
   isLoadingAllowance: boolean;
   initialUIModelId?: string;
+  onVisibleLeafChange?: (leafMessageId: string | null) => void;
 }
 
 function buildMessageParts(text: string, attachments?: ChatPageShellAttachment[]) {
@@ -132,6 +133,7 @@ export function ChatPageShell({
   allowanceResetTime,
   isLoadingAllowance,
   initialUIModelId = 'fast',
+  onVisibleLeafChange,
 }: ChatPageShellProps) {
   const queryClient = useQueryClient();
   const cacheChatId = branchChatId ?? chatId;
@@ -205,6 +207,12 @@ export function ChatPageShell({
   const displayedMessages = useMemo(() => {
     return isViewingStreamingBranch ? messages : branchDisplayedMessages;
   }, [branchDisplayedMessages, isViewingStreamingBranch, messages]);
+
+  // Report the visible thread's leaf up to the page so the header's Share action
+  // can pass it as `currentLeafMessageId` for "visible thread" mode.
+  useEffect(() => {
+    onVisibleLeafChange?.(activePathLastMessageId);
+  }, [activePathLastMessageId, onVisibleLeafChange]);
 
   useEffect(() => {
     if (status === 'ready' && branchState.activePath.length > 0 && !isViewingStreamingBranch) {

@@ -22,6 +22,8 @@ interface MessageRendererProps {
   onUIModelChange: (uiModelId: string) => void;
   hasAllowance?: boolean;
   isLoadingAllowance?: boolean;
+  /** When provided, uses the public share endpoint to resolve attachment URLs instead of the authenticated one. Also enables readOnly mode. */
+  shareToken?: string;
 }
 
 export const MessageRenderer = memo(function MessageRenderer({
@@ -40,7 +42,9 @@ export const MessageRenderer = memo(function MessageRenderer({
   onUIModelChange,
   hasAllowance,
   isLoadingAllowance,
+  shareToken,
 }: MessageRendererProps) {
+  const readOnly = !!shareToken;
 
   switch (message.role) {
     case 'user':
@@ -59,6 +63,7 @@ export const MessageRenderer = memo(function MessageRenderer({
           onUIModelChange={onUIModelChange}
           hasAllowance={hasAllowance}
           isLoadingAllowance={isLoadingAllowance}
+          shareToken={shareToken}
         />
       );
     case 'assistant':
@@ -73,6 +78,7 @@ export const MessageRenderer = memo(function MessageRenderer({
           onBranchNext={onBranchNext}
           isLoading={isLoading}
           isGenerating={isGenerating}
+          readOnly={readOnly}
         />
       );
     default:

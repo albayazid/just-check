@@ -103,3 +103,38 @@ export const attachmentResolveRatelimit = new Ratelimit({
   redis,
   limiter: Ratelimit.slidingWindow(100, "1m"),
 });
+
+// ============================================================================
+// SHARING RATE LIMITERS
+// ============================================================================
+
+export const shareCreateRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(30, "1m"),
+});
+
+export const shareGetRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(100, "1m"),
+});
+
+export const shareRevokeRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(30, "1m"),
+});
+
+// Public endpoints — use IP-based keys since no auth is required
+export const shareViewRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(200, "1m"),
+});
+
+export const shareForkRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(10, "1m"),
+});
+
+export const shareAttachmentRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(100, "1m"),
+});
