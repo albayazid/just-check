@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
   Archive,
   ArchiveRestore,
+  Check,
   FolderInput,
   Menu,
   MessageCirclePlus,
@@ -14,6 +15,7 @@ import {
   Pin,
   PinOff,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useConversation } from '@/hooks/use-conversation';
 import {
@@ -68,6 +70,9 @@ export default function ChatPageHeader({ chatId }: ChatPageHeaderProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Set on Rename, cleared on close — tells onCloseAutoFocus to skip returning
+  // focus to the ⋮ so the rename input keeps it (Rename only).
+  const renameJustStarted = useRef(false);
 
   // Derive the displayed title straight from the query (always fresh — the
   // optimistic rename cache update keeps this in sync) and only hold a draft
@@ -84,6 +89,7 @@ export default function ChatPageHeader({ chatId }: ChatPageHeaderProps) {
   const startEditing = () => {
     setDraftTitle(title || '');
     setIsEditing(true);
+    renameJustStarted.current = true;
   };
 
   const commitRename = () => {
@@ -111,39 +117,68 @@ export default function ChatPageHeader({ chatId }: ChatPageHeaderProps) {
           <Menu size={24} />
         </button>
 
-        {isEditing ? (
-          <Input
-            ref={inputRef}
-            value={draftTitle}
-            onChange={(e) => setDraftTitle(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitRename();
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                cancelRename();
-              }
-            }}
-            disabled={renameConversation.isPending}
-            className="h-8 min-w-0 flex-1"
-            placeholder="Enter conversation title"
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={isPending ? undefined : startEditing}
-            title={title || 'Untitled Conversation'}
-            className="flex h-8 min-w-0 flex-1 items-center text-left text-sm font-medium text-foreground/90 hover:text-foreground md:text-base"
-          >
-            {isPending ? (
-              <Skeleton className="h-4 w-40" />
+        <div className="flex items-center gap-1 mr-auto">
+          {/* Width declared once here; the ✓/✕ below sit OUTSIDE this slot so they
+              don't eat into it, keeping the input's right edge aligned with the title's. */}
+          <div className="flex h-8 min-w-0 items-center px-2 w-[45vw] sm:w-104">
+            {isEditing ? (
+              <Input
+                ref={inputRef}
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitRename();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelRename();
+                  }
+                }}
+                className="h-8 w-full min-w-0"
+                placeholder="Enter conversation title"
+              />
             ) : (
-              <span className="truncate">{title || 'Untitled Conversation'}</span>
+              <button
+                type="button"
+                onClick={isPending ? undefined : startEditing}
+                title={title || 'Untitled Conversation'}
+                className="flex h-8 max-w-full min-w-0 items-center text-left text-sm font-medium text-foreground/90 hover:text-foreground md:text-base"
+              >
+                {isPending ? (
+                  <Skeleton className="h-4 w-40" />
+                ) : (
+                  <span className="truncate">{title || 'Untitled Conversation'}</span>
+                )}
+              </button>
             )}
-          </button>
-        )}
+          </div>
+
+          {isEditing && (
+            <>
+              <button
+                type="button"
+                // Prevent blur so commit fires once (via click) instead of twice (blur + click).
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={commitRename}
+                aria-label="Save title"
+                className="rounded-md p-1.5 text-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Check className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={cancelRename}
+                aria-label="Cancel rename"
+                className="rounded-md p-1.5 text-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </>
+          )}
+        </div>
 
         {isMobile && (
           <TooltipProvider>
@@ -174,7 +209,19 @@ export default function ChatPageHeader({ chatId }: ChatPageHeaderProps) {
               <MoreHorizontal size={20} />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="bottom" align="end" className="min-w-45">
+          <DropdownMenuContent
+            side="bottom"
+            align="end"
+            className="min-w-45"
+            onCloseAutoFocus={(e) => {
+              // Only block focus-return when Rename was just chosen — otherwise let
+              // Pin/Unpin/etc. return focus to the ⋮ as normal.
+              if (renameJustStarted.current) {
+                renameJustStarted.current = false;
+                e.preventDefault();
+              }
+            }}
+          >
             <DropdownMenuItem onSelect={startEditing}>
               <PencilLine /> Rename
             </DropdownMenuItem>
