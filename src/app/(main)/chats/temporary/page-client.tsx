@@ -3,14 +3,19 @@
 import type { UIMessage } from 'ai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { MessageCircleDashed } from 'lucide-react';
+import { MessageCircleDashed, MessageCirclePlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
+import Link from 'next/link';
 import {
   ChatPageShell,
   type ChatPageShellAttachment,
   type ChatPageShellPendingMessage,
 } from '@/components/chat/chat-page-shell';
+import BrandHeader from '@/components/common/brand-header';
+import { MessageCircleDashedCheck } from '@/components/icons/message-circle-dashed-check';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useSubscriptionAndAllowanceStatus } from '@/hooks/use-subscription-and-allowance';
 
 const MAX_CREATE_ATTEMPTS = 3;
@@ -18,6 +23,7 @@ const MAX_CREATE_ATTEMPTS = 3;
 type PendingMessage = ChatPageShellPendingMessage;
 
 export default function TemporaryChatPageClient() {
+  const isMobile = useIsMobile();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const [pendingFirstMessage, setPendingFirstMessage] = useState<PendingMessage | null>(null);
@@ -159,112 +165,142 @@ export default function TemporaryChatPageClient() {
     : null;
 
   return (
-    <ChatPageShell
-      chatId={localSessionIdRef.current}
-      branchChatId={branchChatKey}
-      messagesData={messagesData}
-      prepareSendMessagesRequest={({ messages, body, trigger, messageId }) => ({
-        body: { id: body?.id ?? conversationId, messages, trigger, messageId, ...body },
-      })}
-      emptyState={(
-        <div className="flex min-h-[60vh] select-none flex-col items-center justify-center text-center">
-          <MessageCircleDashed className="mb-3 h-10 w-10 text-muted-foreground/40" strokeWidth={1.5} />
-          <div className="text-base text-muted-foreground/60">
-            Start a temporary conversation
-          </div>
-        </div>
-      )}
-      extraLoading={isCreatingConversation || isPreparingFirstSend || pendingFirstMessage !== null}
-      pendingMessage={pendingMessageToSend}
-      onPendingMessageConsumed={() => {
-        setPendingFirstMessage(null);
-        setIsPreparingFirstSend(false);
-      }}
-      onSubmitMessage={async ({ text, attachments, currentUIModelId, displayedMessages, sendMessage, getLastRealMessageId }) => {
-        if (!hasAllowance) {
-          return;
-        }
-
-        const trimmedText = text.trim();
-        if (!trimmedText) {
-          return;
-        }
-
-        const parts: Array<{ type: 'text'; text: string } | { type: 'file'; url: string; mediaType: string; filename?: string }> = [
-          { type: 'text', text: trimmedText },
-        ];
-
-        attachments?.forEach((attachment) => {
-          parts.push({
-            type: 'file',
-            url: attachment.url,
-            mediaType: attachment.mimeType,
-            filename: attachment.originalName,
-          });
-        });
-
-        if (!conversationId) {
-          setIsPreparingFirstSend(true);
-          setPendingFirstMessage({
-            message: trimmedText,
-            attachments: attachments as ChatPageShellAttachment[] | undefined,
-            UIModelId: currentUIModelId,
-          });
-
-          try {
-            await createTemporaryConversation(trimmedText.slice(0, 256));
-          } catch {
+    <div className="flex h-full w-full flex-col">
+      <BrandHeader>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div
+                className="p-2 text-foreground rounded-lg"
+                aria-label="Temporary chat active"
+              >
+                <MessageCircleDashedCheck size={20} />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Temporary Chat Enabled</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        {isMobile && (
+          <Link
+            href="/"
+            className="p-2 text-foreground hover:text-foreground/80 hover:bg-accent rounded-lg transition-colors"
+            aria-label="New chat"
+          >
+            <MessageCirclePlus size={20} />
+          </Link>
+        )}
+      </BrandHeader>
+      <div className="min-h-0 flex-1">
+        <ChatPageShell
+          chatId={localSessionIdRef.current}
+          branchChatId={branchChatKey}
+          messagesData={messagesData}
+          prepareSendMessagesRequest={({ messages, body, trigger, messageId }) => ({
+            body: { id: body?.id ?? conversationId, messages, trigger, messageId, ...body },
+          })}
+          emptyState={(
+            <div className="flex min-h-[60vh] select-none flex-col items-center justify-center text-center">
+              <MessageCircleDashed className="mb-3 h-10 w-10 text-muted-foreground/40" strokeWidth={1.5} />
+              <div className="text-base text-muted-foreground/60">
+                Start a temporary conversation
+              </div>
+            </div>
+          )}
+          extraLoading={isCreatingConversation || isPreparingFirstSend || pendingFirstMessage !== null}
+          pendingMessage={pendingMessageToSend}
+          onPendingMessageConsumed={() => {
             setPendingFirstMessage(null);
             setIsPreparingFirstSend(false);
-            toast.error('Unable to start temporary chat. Please try again.');
-          }
-          return;
-        }
-
-        try {
-          sendMessage(
-            { parts },
-            {
-              body: {
-                id: conversationId,
-                UIModelId: currentUIModelId,
-                previousMessageId: getLastRealMessageId(displayedMessages),
-              },
+          }}
+          onSubmitMessage={async ({ text, attachments, currentUIModelId, displayedMessages, sendMessage, getLastRealMessageId }) => {
+            if (!hasAllowance) {
+              return;
             }
-          );
-        } catch {
-          toast.error('Unable to start temporary chat. Please try again.');
-        }
-      }}
-      onSubmitEditedMessage={({ parts, previousMessageId, currentUIModelId, sendMessage }) => {
-        if (!conversationId) {
-          return;
-        }
 
-        sendMessage(
-          { parts },
-          {
-            body: { id: conversationId, UIModelId: currentUIModelId, previousMessageId },
-          }
-        );
-      }}
-      onSubmitRegeneratedMessage={({ messageId, currentUIModelId, regenerate }) => {
-        if (!conversationId) {
-          return;
-        }
+            const trimmedText = text.trim();
+            if (!trimmedText) {
+              return;
+            }
 
-        regenerate({
-          messageId,
-          body: { id: conversationId, UIModelId: currentUIModelId },
-        });
-      }}
-      canSendMessages={!!hasAllowance}
-      canMutateMessages={!!hasAllowance && !!conversationId}
-      planId={planId}
-      hasAllowance={hasAllowance}
-      remainingPercentage={remainingPercentage}
-      allowanceResetTime={periodEnd}
-      isLoadingAllowance={isLoadingAllowance}
-    />
+            const parts: Array<{ type: 'text'; text: string } | { type: 'file'; url: string; mediaType: string; filename?: string }> = [
+              { type: 'text', text: trimmedText },
+            ];
+
+            attachments?.forEach((attachment) => {
+              parts.push({
+                type: 'file',
+                url: attachment.url,
+                mediaType: attachment.mimeType,
+                filename: attachment.originalName,
+              });
+            });
+
+            if (!conversationId) {
+              setIsPreparingFirstSend(true);
+              setPendingFirstMessage({
+                message: trimmedText,
+                attachments: attachments as ChatPageShellAttachment[] | undefined,
+                UIModelId: currentUIModelId,
+              });
+
+              try {
+                await createTemporaryConversation(trimmedText.slice(0, 256));
+              } catch {
+                setPendingFirstMessage(null);
+                setIsPreparingFirstSend(false);
+                toast.error('Unable to start temporary chat. Please try again.');
+              }
+              return;
+            }
+
+            try {
+              sendMessage(
+                { parts },
+                {
+                  body: {
+                    id: conversationId,
+                    UIModelId: currentUIModelId,
+                    previousMessageId: getLastRealMessageId(displayedMessages),
+                  },
+                }
+              );
+            } catch {
+              toast.error('Unable to start temporary chat. Please try again.');
+            }
+          }}
+          onSubmitEditedMessage={({ parts, previousMessageId, currentUIModelId, sendMessage }) => {
+            if (!conversationId) {
+              return;
+            }
+
+            sendMessage(
+              { parts },
+              {
+                body: { id: conversationId, UIModelId: currentUIModelId, previousMessageId },
+              }
+            );
+          }}
+          onSubmitRegeneratedMessage={({ messageId, currentUIModelId, regenerate }) => {
+            if (!conversationId) {
+              return;
+            }
+
+            regenerate({
+              messageId,
+              body: { id: conversationId, UIModelId: currentUIModelId },
+            });
+          }}
+          canSendMessages={!!hasAllowance}
+          canMutateMessages={!!hasAllowance && !!conversationId}
+          planId={planId}
+          hasAllowance={hasAllowance}
+          remainingPercentage={remainingPercentage}
+          allowanceResetTime={periodEnd}
+          isLoadingAllowance={isLoadingAllowance}
+        />
+      </div>
+    </div>
   );
 }

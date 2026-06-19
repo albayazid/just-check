@@ -202,6 +202,9 @@ export function useDeleteConversation() {
       queryClient.invalidateQueries({ queryKey: ['conversations', 'pinned'] });
     },
     onSuccess: (_, conversationId) => {
+      // Drop cached detail/messages so navigating back never shows stale data
+      queryClient.removeQueries({ queryKey: ['conversation', conversationId] });
+      queryClient.removeQueries({ queryKey: ['messages', conversationId] });
       // Navigate home if deleted conversation was active
       if (pathname === `/chats/${conversationId}`) {
         router.push('/');
@@ -262,10 +265,18 @@ export function useRenameConversation() {
       queryClient.setQueryData<InfiniteData<ListConversationsResult>>(regularKey, renameInCache);
       queryClient.setQueryData<InfiniteData<ListConversationsResult>>(pinnedKey, renameInCache);
 
+      // Optimistically update the single-conversation cache consumed by the chat
+      // header so the title flips instantly instead of waiting for a refetch.
+      const singleKey = ['conversation', conversationId] as const;
+      const previousSingle = queryClient.getQueryData<{ title: string | null; pinned_at: string | null }>(singleKey);
+      queryClient.setQueryData<{ title: string | null; pinned_at: string | null }>(singleKey, (old) =>
+        old ? { ...old, title: newTitle } : old
+      );
+
       // Return context with previous data for rollback
-      return { previousRegular, previousPinned };
+      return { previousRegular, previousPinned, previousSingle };
     },
-    onError: (_err, _variables, context) => {
+    onError: (_err, variables, context) => {
       // Rollback on error
       if (context?.previousRegular) {
         queryClient.setQueryData(['conversations', 'regular'], context.previousRegular);
@@ -273,11 +284,15 @@ export function useRenameConversation() {
       if (context?.previousPinned) {
         queryClient.setQueryData(['conversations', 'pinned'], context.previousPinned);
       }
+      if (context?.previousSingle) {
+        queryClient.setQueryData(['conversation', variables.conversationId], context.previousSingle);
+      }
     },
-    onSettled: () => {
+    onSettled: (_data, _error, variables) => {
       // Refetch to ensure server state
       queryClient.invalidateQueries({ queryKey: ['conversations', 'regular'] });
       queryClient.invalidateQueries({ queryKey: ['conversations', 'pinned'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation', variables.conversationId] });
     },
   });
 }
@@ -412,10 +427,11 @@ export function usePinConversation() {
         queryClient.setQueryData(['conversations', 'pinned'], context.previousPinned);
       }
     },
-    onSettled: () => {
+    onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({ queryKey: ['conversations', 'regular'] });
       queryClient.invalidateQueries({ queryKey: ['conversations', 'pinned'] });
       queryClient.invalidateQueries({ queryKey: ['pinnedCount'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation', variables.conversationId] });
     },
   });
 }
@@ -497,9 +513,14 @@ export function useArchiveConversation() {
       queryClient.invalidateQueries({ queryKey: ['pinnedCount'] });
     },
     onSuccess: (_, { conversationId, archived }) => {
-      // Navigate home if archived conversation was active
-      if (archived && pathname === `/chats/${conversationId}`) {
-        router.push('/');
+      if (archived) {
+        // Drop cached detail/messages so navigating back never shows stale data
+        queryClient.removeQueries({ queryKey: ['conversation', conversationId] });
+        queryClient.removeQueries({ queryKey: ['messages', conversationId] });
+        // Navigate home if archived conversation was active
+        if (pathname === `/chats/${conversationId}`) {
+          router.push('/');
+        }
       }
     },
   });

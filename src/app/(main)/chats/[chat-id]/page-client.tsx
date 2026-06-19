@@ -7,6 +7,7 @@ import {
   type ChatPageShellAttachment,
   type ChatPageShellPendingMessage,
 } from '@/components/chat/chat-page-shell';
+import ChatPageHeader from '@/components/chat/chat-page-header';
 import { ChatHistorySkeleton } from '@/components/messages/renderers/ChatHistorySkeleton';
 import { useMessages } from '@/hooks/use-messages';
 import { useConversation } from '@/hooks/use-conversation';
@@ -48,58 +49,67 @@ export default function ChatPageClient() {
     : null;
 
   return (
-    <ChatPageShell
-      chatId={chatId}
-      messagesData={messagesData}
-      prepareSendMessagesRequest={({ id, messages, body, trigger, messageId }) => ({
-        body: { id, messages, trigger, messageId, ...body },
-      })}
-      isLoadingHistory={isLoadingHistory}
-      historyContent={<ChatHistorySkeleton />}
-      pendingMessage={pendingMessage}
-      onPendingMessageConsumed={clearConversationStarter}
-      onSubmitMessage={({ text, attachments, currentUIModelId, displayedMessages, sendMessage, getLastRealMessageId }) => {
-        sendMessage(
-          {
-            parts: [
-              { type: 'text', text },
-              ...(attachments ?? []).map((attachment) => ({
-                type: 'file' as const,
-                url: attachment.url,
-                mediaType: attachment.mimeType,
-                filename: attachment.originalName,
-              })),
-            ],
-          },
-          {
-            body: {
-              UIModelId: currentUIModelId,
-              previousMessageId: getLastRealMessageId(displayedMessages),
-            },
-          }
-        );
-      }}
-      onSubmitEditedMessage={({ parts, previousMessageId, currentUIModelId, sendMessage }) => {
-        sendMessage(
-          { parts },
-          {
-            body: { UIModelId: currentUIModelId, previousMessageId },
-          }
-        );
-      }}
-      onSubmitRegeneratedMessage={({ messageId, currentUIModelId, regenerate }) => {
-        regenerate({
-          messageId,
-          body: { UIModelId: currentUIModelId },
-        });
-      }}
-      canSendMessages={!!hasAllowance}
-      canMutateMessages={!!hasAllowance}
-      planId={planId}
-      hasAllowance={hasAllowance}
-      remainingPercentage={remainingPercentage}
-      allowanceResetTime={periodEnd}
-      isLoadingAllowance={isLoadingAllowance}
-    />
+    <div className="flex h-full w-full flex-col">
+      <ChatPageHeader chatId={chatId} />
+      {/*
+        `min-h-0 flex-1` gives the shell a bounded height so its internal message
+        scroller works; the header above is shrink-0 and stays pinned.
+      */}
+      <div className="min-h-0 flex-1">
+        <ChatPageShell
+          chatId={chatId}
+          messagesData={messagesData}
+          prepareSendMessagesRequest={({ id, messages, body, trigger, messageId }) => ({
+            body: { id, messages, trigger, messageId, ...body },
+          })}
+          isLoadingHistory={isLoadingHistory}
+          historyContent={<ChatHistorySkeleton />}
+          pendingMessage={pendingMessage}
+          onPendingMessageConsumed={clearConversationStarter}
+          onSubmitMessage={({ text, attachments, currentUIModelId, displayedMessages, sendMessage, getLastRealMessageId }) => {
+            sendMessage(
+              {
+                parts: [
+                  { type: 'text', text },
+                  ...(attachments ?? []).map((attachment) => ({
+                    type: 'file' as const,
+                    url: attachment.url,
+                    mediaType: attachment.mimeType,
+                    filename: attachment.originalName,
+                  })),
+                ],
+              },
+              {
+                body: {
+                  UIModelId: currentUIModelId,
+                  previousMessageId: getLastRealMessageId(displayedMessages),
+                },
+              }
+            );
+          }}
+          onSubmitEditedMessage={({ parts, previousMessageId, currentUIModelId, sendMessage }) => {
+            sendMessage(
+              { parts },
+              {
+                body: { UIModelId: currentUIModelId, previousMessageId },
+              }
+            );
+          }}
+          onSubmitRegeneratedMessage={({ messageId, currentUIModelId, regenerate }) => {
+            regenerate({
+              messageId,
+              body: { UIModelId: currentUIModelId },
+            });
+          }}
+          canSendMessages={!!hasAllowance}
+          canMutateMessages={!!hasAllowance}
+          planId={planId}
+          hasAllowance={hasAllowance}
+          remainingPercentage={remainingPercentage}
+          allowanceResetTime={periodEnd}
+          isLoadingAllowance={isLoadingAllowance}
+        />
+      </div>
+    </div>
   );
 }

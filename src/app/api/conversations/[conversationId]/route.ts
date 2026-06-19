@@ -27,7 +27,7 @@ export async function GET(
 
     const { data, error } = await supabase
       .from('conversations')
-      .select('title')
+      .select('title, pinned_at')
       .eq('id', conversationId)
       .eq('clerk_user_id', clerkUserId)
       .is('deleted_at', null)
@@ -37,7 +37,7 @@ export async function GET(
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ title: data.title });
+    return NextResponse.json({ title: data.title, pinned_at: data.pinned_at });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

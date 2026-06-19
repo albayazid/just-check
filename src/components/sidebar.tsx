@@ -4,8 +4,8 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useIsTouchDevice } from '@/hooks/use-touch-device';
-import { useConversations, usePinnedConversations, useDeleteConversation, useRenameConversation, usePinConversation, useArchiveConversation, usePinnedCount } from '@/hooks/use-conversations';
-import { useFolders, useCreateFolder, useUpdateFolder, useDeleteFolder, useMoveToFolder, useFolderLimit } from '@/hooks/use-folders';
+import { useConversations, usePinnedConversations, useRenameConversation, usePinConversation, useArchiveConversation, usePinnedCount } from '@/hooks/use-conversations';
+import { useFolders, useCreateFolder, useUpdateFolder, useDeleteFolder, useFolderLimit } from '@/hooks/use-folders';
 import { useSubscription } from '@/hooks/use-subscription';
 import { getPlanDisplayName } from '@/lib/subscription-utils';
 import { useUser, useAuth } from '@clerk/nextjs';
@@ -69,6 +69,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FolderDialog } from '@/components/folder-dialog';
+import { DeleteConversationDialog } from '@/components/conversations/delete-conversation-dialog';
+import { MoveToFolderDialog } from '@/components/conversations/move-to-folder-dialog';
+import { useActiveChatId } from '@/hooks/use-active-chat-id';
 import type { StoredConversation, ConversationFolder } from '@/lib/chat-history';
 
 const MENU_ACTION_HOVER_REVEAL =
@@ -94,10 +97,7 @@ function ChatSidebar() {
   const isTouchDevice = useIsTouchDevice();
 
   // Current conversation id from the URL
-  const activeConversationId = useMemo(() => {
-    const match = pathname.match(/^\/chats\/([a-f0-9-]{36})$/i);
-    return match ? match[1] : null;
-  }, [pathname]);
+  const activeConversationId = useActiveChatId();
 
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
@@ -118,7 +118,6 @@ function ChatSidebar() {
   // Chat history (TanStack Query)
   const { data, fetchNextPage, hasNextPage, isPending, isFetchingNextPage } = useConversations();
   const { data: pinnedData } = usePinnedConversations();
-  const deleteConversation = useDeleteConversation();
   const renameConversation = useRenameConversation();
   const pinConversation = usePinConversation();
   const archiveConversation = useArchiveConversation();
@@ -127,12 +126,11 @@ function ChatSidebar() {
 
   // Folders
   const [foldersExpanded, setFoldersExpanded] = useState(false);
-  const shouldFetchFolders = foldersExpanded || moveToFolderDialogOpen;
+  const shouldFetchFolders = foldersExpanded;
   const { data: foldersData, isPending: foldersLoading } = useFolders({ enabled: shouldFetchFolders });
   const createFolder = useCreateFolder();
   const updateFolder = useUpdateFolder();
   const deleteFolder = useDeleteFolder();
-  const moveToFolder = useMoveToFolder();
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
 
   const { data: folderLimitData } = useFolderLimit({ enabled: foldersExpanded });
@@ -543,39 +541,14 @@ function ChatSidebar() {
       {/* ---------------------------------------------------------- */}
 
       {/* Delete conversation */}
-      <Dialog
+      <DeleteConversationDialog
+        conversationId={conversationToDelete}
         open={deleteDialogOpen}
         onOpenChange={(open) => {
           setDeleteDialogOpen(open);
           if (!open) setConversationToDelete(null);
         }}
-      >
-        <DialogContent className="sm:max-w-md" showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Delete Chat, Sure?</DialogTitle>
-            <DialogDescription>
-              This action cannot be undone. This will permanently delete this conversation and all its messages.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-3 sm:justify-end">
-            <Button variant="secondary" onClick={() => setDeleteDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (conversationToDelete) {
-                  deleteConversation.mutate(conversationToDelete);
-                }
-                setDeleteDialogOpen(false);
-                setConversationToDelete(null);
-              }}
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      />
 
       {/* Rename conversation */}
       <Dialog
@@ -715,52 +688,14 @@ function ChatSidebar() {
       </Dialog>
 
       {/* Move to folder */}
-      <Dialog
+      <MoveToFolderDialog
+        conversationId={conversationToMove}
         open={moveToFolderDialogOpen}
         onOpenChange={(open) => {
           setMoveToFolderDialogOpen(open);
           if (!open) setConversationToMove(null);
         }}
-      >
-        <DialogContent className="sm:max-w-md" showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Move to Folder</DialogTitle>
-            <DialogDescription>Select a folder to move this conversation to.</DialogDescription>
-          </DialogHeader>
-          <div className="max-h-75 space-y-2 overflow-y-auto py-4">
-            {foldersLoading ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="size-5 animate-spin text-muted-foreground" />
-                <span className="ml-2 text-sm text-muted-foreground">Loading folders...</span>
-              </div>
-            ) : folders.length === 0 ? (
-              <p className="py-4 text-center text-sm text-muted-foreground">No folders yet. Create one first.</p>
-            ) : (
-              folders.map((folder) => (
-                <button
-                  key={folder.id}
-                  className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm hover:bg-accent"
-                  onClick={() => {
-                    if (conversationToMove) {
-                      moveToFolder.mutate({ conversationId: conversationToMove, folderId: folder.id });
-                    }
-                    setMoveToFolderDialogOpen(false);
-                    setConversationToMove(null);
-                  }}
-                >
-                  <FolderInput className="size-4" style={{ color: folder.color || undefined }} />
-                  <span>{folder.name}</span>
-                </button>
-              ))
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setMoveToFolderDialogOpen(false)}>
-              Cancel
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      />
     </Sidebar>
   );
 }

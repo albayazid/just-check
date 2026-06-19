@@ -1,11 +1,14 @@
 'use client';
 import ChatInput from '@/components/chat-input';
+import BrandHeader from '@/components/common/brand-header';
 import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { MessageCircleDashed } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useCreateConversation } from '@/hooks/use-conversations';
 import { useConversationStarterStore } from '@/stores/message-store';
 import { useSubscriptionAndAllowanceStatus } from '@/hooks/use-subscription-and-allowance';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export default function MainClient() {
   const createConversation = useCreateConversation();
@@ -41,36 +44,57 @@ export default function MainClient() {
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -20 }}
-        transition={{ duration: 0.3 }}
-        className="mb-8 text-center"
-      >
-        <div className="text-2xl md:text-3xl h-10 md:h-12 font-bold bg-clip-text text-foreground">
-          Need anything? Just ask me.
-        </div>
-      </motion.div>
+    <div className="flex h-full w-full flex-col">
+      <BrandHeader>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                href="/chats/temporary"
+                className="p-2 text-foreground transition-colors hover:bg-accent hover:text-foreground/80 rounded-lg"
+                aria-label="Start temporary chat"
+              >
+                <MessageCircleDashed size={20} />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Temporary Chat</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </BrandHeader>
 
-      <motion.div
-        layoutId="chat-input-container"
-        className="w-full max-w-3xl"
-      >
-        <ChatInput
-          onSubmit={handleSubmit}
-          isLoading={isLoading}
-          placeholder="Type your message..."
-          selectedUIModelId={currentUIModelId}
-          onUIModelChange={setCurrentUIModelId}
-          planId={planId}
-          hasAllowance={hasAllowance}
-          remainingPercentage={remainingPercentage}
-          allowanceResetTime={periodEnd}
-          isLoadingAllowance={isLoadingAllowance}
-        />
-      </motion.div>
+      <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.3 }}
+          className="mb-8 text-center"
+        >
+          <div className="text-2xl md:text-3xl h-10 md:h-12 font-bold bg-clip-text text-foreground">
+            Need anything? Just ask me.
+          </div>
+        </motion.div>
+
+        <motion.div
+          layoutId="chat-input-container"
+          className="w-full max-w-3xl"
+        >
+          <ChatInput
+            onSubmit={handleSubmit}
+            isLoading={isLoading}
+            placeholder="Type your message..."
+            selectedUIModelId={currentUIModelId}
+            onUIModelChange={setCurrentUIModelId}
+            planId={planId}
+            hasAllowance={hasAllowance}
+            remainingPercentage={remainingPercentage}
+            allowanceResetTime={periodEnd}
+            isLoadingAllowance={isLoadingAllowance}
+          />
+        </motion.div>
+      </div>
     </div>
   );
 }
