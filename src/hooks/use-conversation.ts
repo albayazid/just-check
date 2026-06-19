@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 interface ConversationData {
   title: string | null;
   pinned_at: string | null;
+  archived_at: string | null;
 }
 
 async function fetchConversation(conversationId: string): Promise<ConversationData> {

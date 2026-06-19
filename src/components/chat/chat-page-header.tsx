@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   Archive,
+  ArchiveRestore,
   FolderInput,
   Menu,
   MessageCirclePlus,
@@ -53,9 +55,11 @@ export default function ChatPageHeader({ chatId }: ChatPageHeaderProps) {
   const pinConversation = usePinConversation();
   const archiveConversation = useArchiveConversation();
   const { data: pinnedCountData } = usePinnedCount();
+  const queryClient = useQueryClient();
 
   const title = data?.title ?? null;
   const isPinned = !!data?.pinned_at;
+  const isArchived = !!data?.archived_at;
   const canPin = pinnedCountData?.canPin ?? true;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -182,8 +186,21 @@ export default function ChatPageHeader({ chatId }: ChatPageHeaderProps) {
               {isPinned ? <PinOff /> : <Pin />}
               {isPinned ? 'Unpin' : 'Pin'}
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => archiveConversation.mutate({ conversationId: chatId, archived: true })}>
-              <Archive /> Archive
+            <DropdownMenuItem
+              onSelect={() =>
+                archiveConversation.mutate(
+                  { conversationId: chatId, archived: !isArchived },
+                  {
+                    onSuccess: () => {
+                      // Refresh this chat's metadata so the header flips Archive↔Unarchive.
+                      queryClient.invalidateQueries({ queryKey: ['conversation', chatId] });
+                    },
+                  },
+                )
+              }
+            >
+              {isArchived ? <ArchiveRestore /> : <Archive />}
+              {isArchived ? 'Unarchive' : 'Archive'}
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setMoveOpen(true)}>
               <FolderInput /> Move to folder
