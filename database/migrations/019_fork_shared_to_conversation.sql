@@ -1,8 +1,17 @@
 -- Migration 019: fork_shared_to_conversation RPC
--- Atomically forks a shared conversation into the authenticated user's account.
--- Validates the share, creates a new conversation, and copies all shared_messages
--- into messages with new UUIDs and remapped previous_message_id references.
--- Zero data leaves the database — no round-trip through application memory.
+-- Forks a shared conversation into the authenticated user's account: validates
+-- the share, creates a new conversation (tagged forked_from_share_id), and
+-- copies all shared_messages into messages (tagged forked_from_shared_message_id)
+-- with new UUIDs and remapped previous_message_id. Zero data leaves the database.
+
+-- Provenance columns for share-forks (own-conversation fork columns live in 020).
+ALTER TABLE public.conversations
+  ADD COLUMN IF NOT EXISTS forked_from_share_id UUID REFERENCES public.shared_conversations(id) ON DELETE SET NULL;
+ALTER TABLE public.messages
+  ADD COLUMN IF NOT EXISTS forked_from_shared_message_id UUID REFERENCES public.shared_messages(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_conversations_forked_from_share
+  ON public.conversations(forked_from_share_id) WHERE forked_from_share_id IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION public.fork_shared_to_conversation(
   p_share_token TEXT,
@@ -29,17 +38,16 @@ BEGIN
     RAISE EXCEPTION 'Shared conversation not found or no longer available';
   END IF;
 
-  -- 2. Create a new conversation for the forking user
-  INSERT INTO public.conversations (clerk_user_id, title)
+  -- 2. Create a new conversation for the forking user, tagged with its share origin
+  INSERT INTO public.conversations (clerk_user_id, title, forked_from_share_id)
     VALUES (
       p_forking_user_id,
-      CASE WHEN v_title IS NOT NULL THEN 'Fork: ' || v_title ELSE 'Forked Conversation' END
+      CASE WHEN v_title IS NOT NULL THEN 'Fork: ' || v_title ELSE 'Forked Conversation' END,
+      v_share_id
     )
     RETURNING id INTO v_new_conversation_id;
 
-  -- 3. Copy all shared_messages into messages with new UUIDs
-  --    Same CTE + gen_random_uuid + self-join pattern as copy_messages_to_share.
-  --    attachment_ids is GENERATED ALWAYS — must NOT appear in the INSERT list.
+  -- 3. Copy all shared_messages into messages with new UUIDs + provenance
   WITH with_new_ids AS (
     SELECT
       gen_random_uuid() AS new_id,
@@ -54,7 +62,7 @@ BEGIN
   )
   INSERT INTO public.messages (
     id, conversation_id, previous_message_id,
-    sender_type, content, metadata, created_at
+    sender_type, content, metadata, created_at, forked_from_shared_message_id
   )
   SELECT
     w.new_id,
@@ -63,7 +71,8 @@ BEGIN
     w.sender_type,
     w.content,
     COALESCE(w.metadata, '{}'::jsonb),
-    w.created_at
+    w.created_at,
+    w.original_id
   FROM with_new_ids w
   LEFT JOIN with_new_ids prev ON w.previous_message_id = prev.original_id;
 

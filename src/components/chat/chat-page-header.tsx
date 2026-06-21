@@ -204,7 +204,6 @@ export default function ChatPageHeader({ chatId, currentLeafMessageId }: ChatPag
 
         <ShareButton
           conversationId={chatId}
-          conversationTitle={title}
           currentLeafMessageId={currentLeafMessageId}
         />
 

@@ -1,14 +1,9 @@
 'use client';
 
-/**
- * ShareDialog
- *
- * Dialog for creating and managing conversation shares.
- * Allows selecting share mode, toggling name visibility,
- * creating links, and revoking existing shares.
- */
+/** ShareDialog — one active link per conversation. Views: loading → create → manage → resync. */
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -18,16 +13,15 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Copy, Check, Link2, Loader2, Trash2, MessagesSquare, GitBranch, Eye } from 'lucide-react';
+import { Copy, Check, Link2, Loader2, Trash2, RefreshCw, MessagesSquare, GitBranch, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { toast } from 'sonner';
-import { useShares, useCreateShare, useRevokeShare } from '@/hooks/use-shares';
-import type { ShareMode } from '@/lib/sharing/types';
+import { useShare, useCreateShare, useResyncShare, useRevokeShare } from '@/hooks/use-shares';
+import type { ShareConversationView, ShareMode } from '@/lib/sharing/types';
 
 // ============================================================================
 // SHARE MODE OPTIONS
@@ -58,6 +52,23 @@ const SHARE_MODES: Array<{
     icon: Eye,
   },
 ];
+
+function modeLabel(mode: ShareMode): string {
+  return SHARE_MODES.find((m) => m.value === mode)?.label ?? mode;
+}
+
+function formatRelativeTime(iso: string | null): string {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  const diff = Math.max(0, Date.now() - then);
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 // ============================================================================
 // SHARE MODE SELECTOR
@@ -105,66 +116,6 @@ function ShareModeSelector({
 }
 
 // ============================================================================
-// EXISTING SHARES LIST
-// ============================================================================
-
-function ExistingSharesList({ conversationId }: { conversationId: string }) {
-  const { data: shares, isLoading } = useShares(conversationId);
-  const revokeMutation = useRevokeShare();
-  const activeShares = shares?.filter((s) => s.isActive) ?? [];
-
-  if (isLoading) {
-    return (
-      <div className="space-y-2 pt-2">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-10 w-full" />
-      </div>
-    );
-  }
-
-  if (activeShares.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="space-y-2 pt-2">
-      <Label className="text-sm font-medium">Active shares</Label>
-      <div className="space-y-1.5">
-        {activeShares.map((share) => (
-          <div
-            key={share.id}
-            className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 text-sm text-foreground">
-                <Link2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate text-xs font-mono text-muted-foreground">
-                  ...{share.token.slice(-8)}
-                </span>
-              </div>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-destructive hover:text-destructive"
-              disabled={revokeMutation.isPending}
-              onClick={() => {
-                revokeMutation.mutate(share.id, {
-                  onSuccess: () => toast.success('Share link revoked'),
-                  onError: (err) => toast.error(err.message || 'Failed to revoke'),
-                });
-              }}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
 // MAIN DIALOG
 // ============================================================================
 
@@ -172,7 +123,6 @@ interface ShareDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   conversationId: string;
-  conversationTitle?: string | null;
   currentLeafMessageId: string | null;
 }
 
@@ -180,34 +130,90 @@ export function ShareDialog({
   open,
   onOpenChange,
   conversationId,
-  conversationTitle,
   currentLeafMessageId,
 }: ShareDialogProps) {
-  const [shareMode, setShareMode] = useState<ShareMode>('entire');
-  const [showOwnerName, setShowOwnerName] = useState(false);
-  const [createdUrl, setCreatedUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: share, isLoading } = useShare(conversationId);
   const createMutation = useCreateShare();
+  const resyncMutation = useResyncShare();
+  const revokeMutation = useRevokeShare();
+
+  const [editing, setEditing] = useState(false);
+  const [shareMode, setShareMode] = useState<ShareMode>('entire');
+  const [copied, setCopied] = useState(false);
+
+  const view: 'loading' | 'create' | 'manage' | 'resync' = isLoading
+    ? 'loading'
+    : share
+      ? (editing ? 'resync' : 'manage')
+      : 'create';
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const shareUrl = share ? `${origin}/share/${share.token}` : null;
+  const leafMissing = shareMode === 'visible_thread' && !currentLeafMessageId;
+
+  const beginEdit = () => {
+    if (!share) return;
+    setShareMode(share.shareMode);
+    setEditing(true);
+  };
 
   const handleCreate = async () => {
     try {
       const result = await createMutation.mutateAsync({
         conversationId,
         shareMode,
-        showOwnerName,
         currentLeafMessageId: shareMode === 'visible_thread' ? currentLeafMessageId ?? undefined : undefined,
       });
-      setCreatedUrl(result.url);
+      // Optimistically populate the cache so the manage view appears instantly;
+      // the background refetch corrects timestamps.
+      const nowIso = new Date().toISOString();
+      queryClient.setQueryData(['share', conversationId], {
+        id: result.id,
+        token: result.token,
+        shareMode,
+        isActive: true,
+        createdAt: nowIso,
+        syncedAt: nowIso,
+        expiresAt: null,
+      } as ShareConversationView);
       toast.success('Share link created');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create share');
     }
   };
 
-  const handleCopyLink = async () => {
-    if (!createdUrl) return;
+  const handleResync = async () => {
+    if (!share) return;
     try {
-      await copyToClipboard(createdUrl);
+      await resyncMutation.mutateAsync({
+        conversationId,
+        shareMode,
+        currentLeafMessageId: shareMode === 'visible_thread' ? currentLeafMessageId ?? undefined : undefined,
+      });
+      setEditing(false);
+      toast.success('Link updated');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update link');
+    }
+  };
+
+  const handleRevoke = () => {
+    if (!share) return;
+    revokeMutation.mutate(conversationId, {
+      onSuccess: () => {
+        setEditing(false);
+        setShareMode('entire');
+        toast.success('Share link revoked');
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to revoke'),
+    });
+  };
+
+  const handleCopyLink = async () => {
+    if (!shareUrl) return;
+    try {
+      await copyToClipboard(shareUrl);
       setCopied(true);
       toast.success('Link copied to clipboard');
       setTimeout(() => setCopied(false), 2000);
@@ -218,11 +224,9 @@ export function ShareDialog({
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
-      // Reset state on close
-      setCreatedUrl(null);
-      setCopied(false);
+      setEditing(false);
       setShareMode('entire');
-      setShowOwnerName(false);
+      setCopied(false);
     }
     onOpenChange(nextOpen);
   };
@@ -232,22 +236,32 @@ export function ShareDialog({
       <DialogContent className="sm:max-w-md" showCloseButton>
         <DialogHeader>
           <DialogTitle>
-            {createdUrl ? 'Link created' : 'Share conversation'}
+            {view === 'manage' || view === 'resync' ? 'Shared link' : 'Share conversation'}
           </DialogTitle>
         </DialogHeader>
 
-        {createdUrl ? (
-          /* ── Step 2: Link ready ── */
+        {view === 'loading' && (
+          <div className="space-y-4 py-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-8 w-40" />
+          </div>
+        )}
+
+        {view === 'create' && (
+          <div className="py-2">
+            <ShareModeSelector value={shareMode} onChange={setShareMode} />
+          </div>
+        )}
+
+        {view === 'manage' && share && (
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Anyone with this link can view
-              {conversationTitle ? ` "${conversationTitle}"` : ' this conversation'}
-              {showOwnerName ? ' with your name shown' : ''}.
+              Anyone with the link can view.
             </p>
             <div className="flex items-center gap-2">
               <Input
                 readOnly
-                value={createdUrl}
+                value={shareUrl ?? ''}
                 className="text-xs font-mono"
                 onFocus={(e) => e.target.select()}
               />
@@ -255,48 +269,28 @@ export function ShareDialog({
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
-          </div>
-        ) : (
-          /* ── Step 1: Configuration ── */
-          <div className="space-y-5 py-2">
-            <ShareModeSelector value={shareMode} onChange={setShareMode} />
-
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
-              <div>
-                <Label htmlFor="show-name-toggle" className="text-sm font-medium cursor-pointer">
-                  Show my name on shared page
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Your display name will appear at the top of the shared page
-                </p>
-              </div>
-              <Switch
-                id="show-name-toggle"
-                size="sm"
-                checked={showOwnerName}
-                onCheckedChange={setShowOwnerName}
-              />
+            <div className="text-xs text-muted-foreground">
+              Shared {modeLabel(share.shareMode)} {share.syncedAt ? formatRelativeTime(share.syncedAt) : 'recently'}
             </div>
+          </div>
+        )}
 
-            <ExistingSharesList conversationId={conversationId} />
+        {view === 'resync' && share && (
+          <div className="py-2">
+            <p className="text-sm text-muted-foreground mb-4">
+              The link stays the same; only what it shows will change.
+            </p>
+            <ShareModeSelector value={shareMode} onChange={setShareMode} />
           </div>
         )}
 
         <DialogFooter>
-          {createdUrl ? (
-            <Button onClick={() => handleOpenChange(false)}>Done</Button>
-          ) : (
+          {view === 'create' && (
             <>
               <DialogClose asChild>
                 <Button variant="outline">Cancel</Button>
               </DialogClose>
-              <Button
-                onClick={handleCreate}
-                disabled={
-                  createMutation.isPending ||
-                  (shareMode === 'visible_thread' && !currentLeafMessageId)
-                }
-              >
+              <Button onClick={handleCreate} disabled={createMutation.isPending || leafMissing}>
                 {createMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
@@ -306,6 +300,47 @@ export function ShareDialog({
                   <>
                     <Link2 className="h-4 w-4 mr-1.5" />
                     Create link
+                  </>
+                )}
+              </Button>
+            </>
+          )}
+
+          {view === 'manage' && (
+            <>
+              <Button
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                onClick={handleRevoke}
+                disabled={revokeMutation.isPending}
+              >
+                {revokeMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-1.5" />
+                )}
+                Revoke
+              </Button>
+              <Button onClick={beginEdit}>
+                <RefreshCw className="h-4 w-4 mr-1.5" />
+                Update
+              </Button>
+            </>
+          )}
+
+          {view === 'resync' && (
+            <>
+              <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+              <Button onClick={handleResync} disabled={resyncMutation.isPending || leafMissing}>
+                {resyncMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-1.5" />
+                    Confirm update
                   </>
                 )}
               </Button>

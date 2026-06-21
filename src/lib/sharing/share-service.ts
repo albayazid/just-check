@@ -1,10 +1,6 @@
 /**
- * Share Service
- *
- * Core business logic for the frozen snapshot sharing system.
- * Heavy data operations (tree-walking, ID remapping, message copying) are
- * handled by the PostgreSQL function copy_messages_to_share to avoid loading
- * all messages into Node.js memory.
+ * Share Service — frozen-snapshot conversation sharing. One ACTIVE share per
+ * conversation (DB-enforced); resync re-freezes with the same token.
  */
 
 import { randomBytes } from 'crypto';
@@ -17,11 +13,13 @@ import type {
   ShareMode,
   CreateShareInput,
   CreateShareResult,
-  ShareListItem,
+  RefreshShareInput,
+  ShareConversationView,
   SharedMessageView,
   PublicShareView,
-  StoredSharedConversation,
 } from './types';
+
+type AdminClient = ReturnType<typeof getSupabaseAdminClient>;
 
 // ============================================================================
 // TOKEN GENERATION
@@ -46,27 +44,88 @@ function filterClientMetadata(meta: AssistantResponseMetadata | undefined): Clie
   };
 }
 
+/** Builds the public share URL for a token. */
+function buildShareUrl(token: string): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  return `${appUrl}/share/${token}`;
+}
+
+/** Owner display name for the public "Shared by" line (nickname → full_name). */
+async function resolveOwnerDisplayName(
+  supabase: AdminClient,
+  clerkUserId: string,
+): Promise<string | null> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('nickname, full_name')
+    .eq('clerk_user_id', clerkUserId)
+    .maybeSingle();
+  return profile ? (profile.nickname || profile.full_name || null) : null;
+}
+
+/** Clears + re-freezes the share's snapshot via RPC; throws on error or zero rows. */
+async function runCopyRpc(
+  supabase: AdminClient,
+  shareId: string,
+  conversationId: string,
+  shareMode: ShareMode,
+  currentLeafMessageId?: string,
+): Promise<void> {
+  const { data: messageCount, error: rpcError } = await supabase.rpc('copy_messages_to_share', {
+    p_share_id: shareId,
+    p_conversation_id: conversationId,
+    p_share_mode: shareMode,
+    p_leaf_message_id: shareMode === 'visible_thread' ? currentLeafMessageId ?? null : null,
+  });
+
+  if (rpcError) {
+    // The RPC raises 'No messages to share' on an empty copy; surface that cleanly.
+    if (rpcError.message.includes('No messages')) {
+      throw new Error('No messages to share');
+    }
+    throw new Error(`Failed to copy messages: ${rpcError.message}`);
+  }
+  if (!messageCount || messageCount === 0) {
+    throw new Error('No messages to share');
+  }
+}
+
+/** Guards the visible_thread leaf belongs to the conversation (defense-in-depth). */
+async function assertLeafInConversation(
+  supabase: AdminClient,
+  conversationId: string,
+  leafMessageId?: string,
+): Promise<void> {
+  if (!leafMessageId) return;
+  const { data: leaf } = await supabase
+    .from('messages')
+    .select('id')
+    .eq('id', leafMessageId)
+    .eq('conversation_id', conversationId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (!leaf) {
+    throw new Error('Leaf message not found in this conversation');
+  }
+}
+
 // ============================================================================
 // PUBLIC API FUNCTIONS
 // ============================================================================
 
 /**
- * Creates a frozen snapshot share of a conversation.
- *
- * JS handles: ownership validation, profile lookup, token generation, share row creation.
- * Postgres handles: copying messages with new IDs and tree-walking (via RPC).
- *
- * @returns The share token and public URL
- * @throws Error if conversation not found, not owned, or no messages
+ * Create or re-freeze the single active share for a conversation. Reuses the
+ * existing share + token if present (upsert). Throws on not-found / not-owned /
+ * temporary / no-messages.
  */
 export async function createShareSnapshot(params: {
   clerkUserId: string;
   input: CreateShareInput;
-}): Promise<CreateShareResult> {
+}): Promise<CreateShareResult & { created: boolean }> {
   const { clerkUserId, input } = params;
   const supabase = getSupabaseAdminClient();
 
-  // 1. Verify conversation ownership and get metadata
+  // 1. Verify conversation ownership and state
   const { data: conversation, error: convError } = await supabase
     .from('conversations')
     .select('id, title, is_temporary, deleted_at')
@@ -77,49 +136,44 @@ export async function createShareSnapshot(params: {
   if (convError || !conversation) {
     throw new Error('Conversation not found');
   }
-
   if (conversation.deleted_at) {
     throw new Error('Conversation not found');
   }
-
   if (conversation.is_temporary) {
     throw new Error('Temporary conversations cannot be shared');
   }
 
-  // 1b. For visible_thread, confirm the supplied leaf actually belongs to this
-  // conversation (defense-in-depth alongside the RPC's conversation_id scoping).
-  if (input.shareMode === 'visible_thread' && input.currentLeafMessageId) {
-    const { data: leaf } = await supabase
-      .from('messages')
-      .select('id')
-      .eq('id', input.currentLeafMessageId)
-      .eq('conversation_id', input.conversationId)
-      .is('deleted_at', null)
-      .maybeSingle();
+  // 2. Validate visible_thread leaf + compute expiry
+  if (input.shareMode === 'visible_thread') {
+    await assertLeafInConversation(supabase, input.conversationId, input.currentLeafMessageId);
+  }
+  const expiresAt = input.expiresInHours
+    ? new Date(Date.now() + input.expiresInHours * 3600_000).toISOString()
+    : null;
 
-    if (!leaf) {
-      throw new Error('Leaf message not found in this conversation');
-    }
+  // 3. Reuse an existing active share if one exists (one active share per convo)
+  const { data: existing } = await supabase
+    .from('shared_conversations')
+    .select('id, token')
+    .eq('source_conversation_id', input.conversationId)
+    .eq('owner_clerk_user_id', clerkUserId)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (existing) {
+    await applySettingsAndCopy(supabase, {
+      shareId: existing.id,
+      sourceConversationId: input.conversationId,
+      title: conversation.title,
+      shareMode: input.shareMode,
+      expiresAt,
+      currentLeafMessageId: input.currentLeafMessageId,
+    });
+    return { id: existing.id, token: existing.token, url: buildShareUrl(existing.token), created: false };
   }
 
-  // 2. Resolve owner display name if requested
-  let ownerDisplayName: string | null = null;
-  if (input.showOwnerName) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('nickname, full_name')
-      .eq('clerk_user_id', clerkUserId)
-      .single();
-
-    if (profile) {
-      ownerDisplayName = profile.nickname || profile.full_name || null;
-    }
-  }
-
-  // 3. Generate token (trivial, no DB call)
+  // 4. No existing share — create a new row with a fresh token
   const token = generateShareToken();
-
-  // 4. Insert shared_conversations row
   const { data: sharedConv, error: insertConvError } = await supabase
     .from('shared_conversations')
     .insert({
@@ -127,11 +181,9 @@ export async function createShareSnapshot(params: {
       source_conversation_id: input.conversationId,
       owner_clerk_user_id: clerkUserId,
       title: conversation.title,
-      owner_display_name: ownerDisplayName,
       share_mode: input.shareMode,
-      expires_at: input.expiresInHours
-        ? new Date(Date.now() + input.expiresInHours * 3600_000).toISOString()
-        : null,
+      expires_at: expiresAt,
+      synced_at: new Date().toISOString(),
     })
     .select('id')
     .single();
@@ -140,29 +192,103 @@ export async function createShareSnapshot(params: {
     throw new Error(`Failed to create share: ${insertConvError?.message}`);
   }
 
-  // 5. Copy messages via Postgres RPC (zero messages in Node memory)
-  const { data: messageCount, error: rpcError } = await supabase.rpc('copy_messages_to_share', {
-    p_share_id: sharedConv.id,
-    p_conversation_id: input.conversationId,
-    p_share_mode: input.shareMode,
-    p_leaf_message_id: input.shareMode === 'visible_thread' ? input.currentLeafMessageId ?? null : null,
+  // 5. Copy messages via Postgres RPC. On failure roll back the new row.
+  try {
+    await runCopyRpc(supabase, sharedConv.id, input.conversationId, input.shareMode, input.currentLeafMessageId);
+  } catch (err) {
+    try { await supabase.from('shared_conversations').delete().eq('id', sharedConv.id); } catch {}
+    throw err;
+  }
+
+  return { id: sharedConv.id, token, url: buildShareUrl(token), created: true };
+}
+
+/**
+ * Applies settings to an existing share row and re-freezes its snapshot.
+ * Shared by the create-reuse path and the explicit resync (Update link) action.
+ * Keeps the row's id and token. Updates synced_at on success.
+ */
+async function applySettingsAndCopy(
+  supabase: AdminClient,
+  args: {
+    shareId: string;
+    sourceConversationId: string;
+    title: string | null;
+    shareMode: ShareMode;
+    expiresAt: string | null;
+    currentLeafMessageId?: string;
+  },
+): Promise<void> {
+  // Copy first so an RPC failure leaves settings untouched. Not fully atomic —
+  // a later UPDATE failure could leave a stale mode label until next resync.
+  await runCopyRpc(supabase, args.shareId, args.sourceConversationId, args.shareMode, args.currentLeafMessageId);
+
+  const { error: updateError } = await supabase
+    .from('shared_conversations')
+    .update({
+      share_mode: args.shareMode,
+      title: args.title,
+      expires_at: args.expiresAt,
+      synced_at: new Date().toISOString(),
+    })
+    .eq('id', args.shareId);
+
+  if (updateError) {
+    throw new Error(`Failed to update share: ${updateError.message}`);
+  }
+}
+
+/**
+ * Resync ("Update link") — re-freezes the active share for a conversation with
+ * new settings, keeping the same token so the public URL is unchanged.
+ *
+ * @throws Error 'Share not found' if no active share exists for the conversation.
+ */
+export async function refreshShare(params: {
+  conversationId: string;
+  clerkUserId: string;
+  input: RefreshShareInput;
+}): Promise<CreateShareResult> {
+  const { conversationId, clerkUserId, input } = params;
+  const supabase = getSupabaseAdminClient();
+
+  // 1. Load the active share for this conversation owned by the user
+  const { data: share, error } = await supabase
+    .from('shared_conversations')
+    .select('id, token, expires_at')
+    .eq('source_conversation_id', conversationId)
+    .eq('owner_clerk_user_id', clerkUserId)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error || !share) {
+    throw new Error('Share not found');
+  }
+
+  // 2. Validate visible_thread leaf belongs to the conversation
+  if (input.shareMode === 'visible_thread') {
+    await assertLeafInConversation(supabase, conversationId, input.currentLeafMessageId);
+  }
+
+  // 3. Re-read the (possibly renamed) title.
+  const { data: conversation } = await supabase
+    .from('conversations')
+    .select('title')
+    .eq('id', conversationId)
+    .eq('clerk_user_id', clerkUserId)
+    .maybeSingle();
+
+  // 4. Apply settings + re-freeze. Preserve the existing expires_at.
+  await applySettingsAndCopy(supabase, {
+    shareId: share.id,
+    sourceConversationId: conversationId,
+    title: conversation?.title ?? null,
+    shareMode: input.shareMode,
+    expiresAt: share.expires_at,
+    currentLeafMessageId: input.currentLeafMessageId,
   });
 
-  if (rpcError) {
-    try { await supabase.from('shared_conversations').delete().eq('id', sharedConv.id); } catch {}
-    throw new Error(`Failed to copy messages: ${rpcError.message}`);
-  }
-
-  if (!messageCount || messageCount === 0) {
-    try { await supabase.from('shared_conversations').delete().eq('id', sharedConv.id); } catch {}
-    throw new Error('No messages to share');
-  }
-
-  // 6. Build public URL
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const url = `${appUrl}/share/${token}`;
-
-  return { id: sharedConv.id, token, url };
+  return { id: share.id, token: share.token, url: buildShareUrl(share.token) };
 }
 
 /**
@@ -176,7 +302,7 @@ export async function getPublicShare(token: string): Promise<PublicShareView | n
   // 1. Fetch the shared conversation
   const { data: sharedConv, error } = await supabase
     .from('shared_conversations')
-    .select('id, title, owner_display_name, share_mode, created_at, is_active, expires_at')
+    .select('id, title, owner_clerk_user_id, share_mode, created_at, is_active, expires_at')
     .eq('token', token)
     .single();
 
@@ -199,7 +325,10 @@ export async function getPublicShare(token: string): Promise<PublicShareView | n
     return null;
   }
 
-  // 3. Build the public view (strip private metadata at the service layer)
+  // 3. Owner name is resolved live  from the profile.
+  const ownerDisplayName = await resolveOwnerDisplayName(supabase, sharedConv.owner_clerk_user_id);
+
+  // 4. Build the public view (strip private metadata at the service layer)
   const publicMessages: SharedMessageView[] = messages.map((msg) => ({
     id: msg.id,
     role: msg.sender_type as 'user' | 'assistant' | 'system',
@@ -212,7 +341,7 @@ export async function getPublicShare(token: string): Promise<PublicShareView | n
   return {
     id: sharedConv.id,
     title: sharedConv.title,
-    ownerDisplayName: sharedConv.owner_display_name,
+    ownerDisplayName,
     shareMode: sharedConv.share_mode as ShareMode,
     createdAt: sharedConv.created_at,
     messages: publicMessages,
@@ -220,42 +349,44 @@ export async function getPublicShare(token: string): Promise<PublicShareView | n
 }
 
 /**
- * Lists all shares for a conversation.
- * Only returns shares owned by the requesting user.
+ * Returns the single active share for a conversation (or null if none),
+ * scoped to the requesting user.
  */
-export async function listSharesForConversation(
+export async function getShareForConversation(
   conversationId: string,
-  clerkUserId: string
-): Promise<ShareListItem[]> {
+  clerkUserId: string,
+): Promise<ShareConversationView | null> {
   const supabase = getSupabaseAdminClient();
 
   const { data, error } = await supabase
     .from('shared_conversations')
-    .select('id, token, share_mode, is_active, created_at, revoked_at')
+    .select('id, token, share_mode, is_active, created_at, synced_at, expires_at')
     .eq('source_conversation_id', conversationId)
     .eq('owner_clerk_user_id', clerkUserId)
-    .order('created_at', { ascending: false });
+    .eq('is_active', true)
+    .maybeSingle();
 
   if (error || !data) {
-    throw new Error(`Failed to list shares: ${error?.message}`);
+    return null;
   }
 
-  return (data as StoredSharedConversation[]).map((row) => ({
-    id: row.id,
-    token: row.token,
-    shareMode: row.share_mode as ShareMode,
-    isActive: row.is_active,
-    createdAt: row.created_at,
-    revokedAt: row.revoked_at,
-  }));
+  return {
+    id: data.id,
+    token: data.token,
+    shareMode: data.share_mode as ShareMode,
+    isActive: data.is_active,
+    createdAt: data.created_at,
+    syncedAt: data.synced_at,
+    expiresAt: data.expires_at,
+  };
 }
 
 /**
- * Revokes a share, making its public link stop working.
- * Only the owner can revoke.
+ * Revokes the active share for a conversation, making its public link stop
+ * working. Only the owner can revoke. Idempotent (only touches active rows).
  */
 export async function revokeShare(
-  shareId: string,
+  conversationId: string,
   clerkUserId: string
 ): Promise<void> {
   const supabase = getSupabaseAdminClient();
@@ -266,7 +397,7 @@ export async function revokeShare(
       is_active: false,
       revoked_at: new Date().toISOString(),
     })
-    .eq('id', shareId)
+    .eq('source_conversation_id', conversationId)
     .eq('owner_clerk_user_id', clerkUserId)
     .eq('is_active', true);
 

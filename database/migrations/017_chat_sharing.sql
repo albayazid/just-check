@@ -12,18 +12,24 @@ CREATE TABLE IF NOT EXISTS public.shared_conversations (
   source_conversation_id UUID NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
   owner_clerk_user_id TEXT NOT NULL,
   title TEXT,
-  owner_display_name TEXT,
   share_mode TEXT NOT NULL CHECK (share_mode IN ('entire', 'latest_thread', 'visible_thread')),
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()),
   revoked_at TIMESTAMP WITH TIME ZONE,
-  expires_at TIMESTAMP WITH TIME ZONE
+  expires_at TIMESTAMP WITH TIME ZONE,
+  -- Last successful freeze (create or resync).
+  synced_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
 CREATE UNIQUE INDEX idx_shared_conversations_token ON public.shared_conversations(token);
 CREATE INDEX idx_shared_conversations_source ON public.shared_conversations(source_conversation_id, owner_clerk_user_id);
 CREATE INDEX idx_shared_conversations_active ON public.shared_conversations(token) WHERE is_active = true;
+
+-- At most one active share per conversation.
+CREATE UNIQUE INDEX idx_shared_conversations_one_active
+  ON public.shared_conversations (source_conversation_id)
+  WHERE is_active = true;
 
 -- ============================================================================
 -- SHARED MESSAGES TABLE
@@ -98,3 +104,26 @@ $$;
 -- Grant service_role access to the RPC function
 GRANT EXECUTE ON FUNCTION public.resolve_file_for_shared_conversation(UUID, TEXT) TO service_role;
 REVOKE ALL ON FUNCTION public.resolve_file_for_shared_conversation(UUID, TEXT) FROM PUBLIC;
+
+-- Soft-delete sets deleted_at, which doesn't fire the FK cascade — so revoke
+-- the share explicitly to take down view/fork/attachment in one place.
+CREATE OR REPLACE FUNCTION public.revoke_shares_on_conversation_delete()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL THEN
+    UPDATE public.shared_conversations
+      SET is_active = false, revoked_at = TIMEZONE('utc'::text, NOW())
+      WHERE source_conversation_id = NEW.id AND is_active = true;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS revoke_shares_on_conversation_delete ON public.conversations;
+CREATE TRIGGER revoke_shares_on_conversation_delete
+    AFTER UPDATE OF deleted_at ON public.conversations
+    FOR EACH ROW
+    EXECUTE FUNCTION public.revoke_shares_on_conversation_delete();
+

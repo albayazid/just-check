@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
 import type { UIMessage } from 'ai';
 import { useAuth } from '@clerk/nextjs';
 import { AlertTriangle, ExternalLink, GitFork, Copy, Check } from 'lucide-react';
@@ -9,7 +11,7 @@ import { useBranchState } from '@/hooks/use-branch-state';
 import { MessageRenderer } from '@/components/messages/renderers/MessageRenderer';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { APP_BRAND_NAME, PARENT_COMPANY_NAME } from '@/lib/branding-constants';
+import { APP_BRAND_LOGO_URL, APP_BRAND_NAME, PARENT_COMPANY_NAME } from '@/lib/branding-constants';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { toast } from 'sonner';
 import { useState } from 'react';
@@ -38,6 +40,41 @@ function toStoredMessages(
       metadata: m.metadata,
       created_at: m.createdAt,
     }));
+}
+
+function ShareHeader({
+  title,
+  ownerDisplayName,
+}: {
+  title?: string | null;
+  ownerDisplayName?: string | null;
+}) {
+  return (
+    <header className="sticky top-0 z-10 border-b border-border/50 bg-background/95 backdrop-blur-sm py-3 px-4">
+      <div className="flex items-center gap-4">
+        <div className="flex flex-1 items-center justify-start">
+          <Link href="/" className="inline-flex items-center gap-2">
+            <Image
+              src={APP_BRAND_LOGO_URL}
+              alt={`${APP_BRAND_NAME} Logo`}
+              width={28}
+              height={28}
+              className="h-7 w-7"
+            />
+            <span className="text-lg font-bold text-foreground/90">{APP_BRAND_NAME}</span>
+          </Link>
+        </div>
+        <div className="flex flex-1 items-center justify-center min-w-0">
+          {title && <h1 className="truncate text-sm font-medium text-foreground">{title}</h1>}
+        </div>
+        <div className="flex flex-1 items-center justify-end min-w-0">
+          {ownerDisplayName && (
+            <span className="truncate text-xs text-muted-foreground">Shared by {ownerDisplayName}</span>
+          )}
+        </div>
+      </div>
+    </header>
+  );
 }
 
 export default function SharePageClient({ token }: { token: string }) {
@@ -94,14 +131,17 @@ export default function SharePageClient({ token }: { token: string }) {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-8">
-        <Skeleton className="h-8 w-48 mb-4" />
-        <Skeleton className="h-4 w-32 mb-8" />
-        <div className="space-y-6">
-          <Skeleton className="h-20 w-3/4 ml-auto" />
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-16 w-2/3 ml-auto" />
-          <Skeleton className="h-40 w-full" />
+      <div className="flex flex-1 flex-col">
+        <ShareHeader />
+        <div className="mx-auto w-full max-w-3xl px-4 py-8">
+          <Skeleton className="h-8 w-48 mb-4" />
+          <Skeleton className="h-4 w-32 mb-8" />
+          <div className="space-y-6">
+            <Skeleton className="h-20 w-3/4 ml-auto" />
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-16 w-2/3 ml-auto" />
+            <Skeleton className="h-40 w-full" />
+          </div>
         </div>
       </div>
     );
@@ -109,42 +149,32 @@ export default function SharePageClient({ token }: { token: string }) {
 
   if (error || !share) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 py-20 px-4">
-        <AlertTriangle className="h-12 w-12 text-muted-foreground" />
-        <h1 className="text-xl font-semibold text-foreground">
-          This shared conversation is no longer available.
-        </h1>
-        <p className="text-muted-foreground text-sm text-center max-w-md">
-          The link may have been revoked or has expired.
-        </p>
-        <Button
-          variant="outline"
-          className="mt-4"
-          onClick={() => (window.location.href = '/')}
-        >
-          Go to {APP_BRAND_NAME}
-          <ExternalLink className="ml-2 h-4 w-4" />
-        </Button>
+      <div className="flex flex-1 flex-col">
+        <ShareHeader />
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 py-20 px-4">
+          <AlertTriangle className="h-12 w-12 text-muted-foreground" />
+          <h1 className="text-xl font-semibold text-foreground">
+            This shared conversation is no longer available.
+          </h1>
+          <p className="text-muted-foreground text-sm text-center max-w-md">
+            The link may have been revoked or has expired.
+          </p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => (window.location.href = '/')}
+          >
+            Go to {APP_BRAND_NAME}
+            <ExternalLink className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="mx-auto w-full max-w-3xl px-4 pt-6 pb-2">
-        {share.title && (
-          <h1 className="text-xl font-semibold text-foreground">{share.title}</h1>
-        )}
-        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-          {share.ownerDisplayName && <span>Shared by {share.ownerDisplayName}</span>}
-          {share.ownerDisplayName && <span>·</span>}
-          <span>{new Date(share.createdAt).toLocaleDateString(undefined, {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })}</span>
-        </div>
-      </div>
+      <ShareHeader title={share.title} ownerDisplayName={share.ownerDisplayName} />
 
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         <div className="mx-auto max-w-3xl space-y-6 py-6">

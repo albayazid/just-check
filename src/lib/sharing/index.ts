@@ -8,7 +8,8 @@ export type {
   ShareMode,
   CreateShareInput,
   CreateShareResult,
-  ShareListItem,
+  RefreshShareInput,
+  ShareConversationView,
   SharedMessageView,
   PublicShareView,
   StoredSharedConversation,
@@ -17,8 +18,9 @@ export type {
 
 export {
   createShareSnapshot,
+  refreshShare,
   getPublicShare,
-  listSharesForConversation,
+  getShareForConversation,
   revokeShare,
   forkSharedConversation,
   resolveShareAttachment,

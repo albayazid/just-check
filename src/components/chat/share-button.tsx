@@ -8,13 +8,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 
 interface ShareButtonProps {
   conversationId: string;
-  conversationTitle?: string | null;
   currentLeafMessageId: string | null;
 }
 
 export function ShareButton({
   conversationId,
-  conversationTitle,
   currentLeafMessageId,
 }: ShareButtonProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -41,7 +39,6 @@ export function ShareButton({
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         conversationId={conversationId}
-        conversationTitle={conversationTitle}
         currentLeafMessageId={currentLeafMessageId}
       />
     </>

@@ -1,34 +1,29 @@
 'use client';
 
-/**
- * React Query hooks for the sharing feature.
- * Follows the same pattern as use-conversations.ts.
- */
+/** React Query hooks for sharing — singleton share at `/api/conversations/[id]/share`. */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ShareListItem, ShareMode, PublicShareView } from '@/lib/sharing/types';
+import type { ShareConversationView, RefreshShareInput, PublicShareView } from '@/lib/sharing/types';
 
 // ============================================================================
 // FETCH HELPERS
 // ============================================================================
 
-async function fetchShares(conversationId: string): Promise<ShareListItem[]> {
-  const res = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/shares`);
+async function fetchShare(conversationId: string): Promise<ShareConversationView | null> {
+  const res = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/share`);
   if (!res.ok) {
     const data = await res.json();
-    throw new Error(data.error || 'Failed to fetch shares');
+    throw new Error(data.error || 'Failed to fetch share');
   }
   const data = await res.json();
-  return data.shares;
+  return data.share;
 }
 
-async function createShare(input: {
-  conversationId: string;
-  shareMode: ShareMode;
-  showOwnerName: boolean;
-  currentLeafMessageId?: string;
-}): Promise<{ id: string; token: string; url: string }> {
-  const res = await fetch('/api/shares', {
+async function createShare(
+  conversationId: string,
+  input: RefreshShareInput,
+): Promise<{ id: string; token: string; url: string }> {
+  const res = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/share`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -40,8 +35,26 @@ async function createShare(input: {
   return res.json();
 }
 
-async function revokeShare(shareId: string): Promise<void> {
-  const res = await fetch(`/api/shares/${shareId}/revoke`, { method: 'DELETE' });
+async function resyncShare(
+  conversationId: string,
+  input: RefreshShareInput,
+): Promise<{ id: string; token: string; url: string }> {
+  const res = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/share`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.error || 'Failed to update link');
+  }
+  return res.json();
+}
+
+async function revokeShare(conversationId: string): Promise<void> {
+  const res = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/share`, {
+    method: 'DELETE',
+  });
   if (!res.ok) {
     const data = await res.json();
     throw new Error(data.error || 'Failed to revoke share');
@@ -73,37 +86,49 @@ async function forkShare(token: string): Promise<{ conversationId: string }> {
 // HOOKS
 // ============================================================================
 
-/** Fetch all shares for a conversation (auth required) */
-export function useShares(conversationId: string) {
+/** Fetch the single active share for a conversation, or null (auth required) */
+export function useShare(conversationId: string) {
   return useQuery({
-    queryKey: ['shares', conversationId],
-    queryFn: () => fetchShares(conversationId),
+    queryKey: ['share', conversationId],
+    queryFn: () => fetchShare(conversationId),
     enabled: !!conversationId,
   });
 }
 
-/** Create a new share (auth required) */
+/** Create a new share, or reuse the existing one if present (auth required) */
 export function useCreateShare() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: createShare,
+    mutationFn: ({ conversationId, ...input }: { conversationId: string } & RefreshShareInput) =>
+      createShare(conversationId, input),
     onSuccess: (_data, variables) => {
-      // Invalidate shares list for this conversation
-      queryClient.invalidateQueries({ queryKey: ['shares', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['share', variables.conversationId] });
     },
   });
 }
 
-/** Revoke an existing share (auth required) */
+/** Re-freeze the share with new settings, same token (auth required) */
+export function useResyncShare() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ conversationId, ...input }: { conversationId: string } & RefreshShareInput) =>
+      resyncShare(conversationId, input),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['share', variables.conversationId] });
+    },
+  });
+}
+
+/** Revoke the share for a conversation (auth required) */
 export function useRevokeShare() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: revokeShare,
-    onSuccess: () => {
-      // Invalidate all shares queries (we don't know which conversation)
-      queryClient.invalidateQueries({ queryKey: ['shares'] });
+    mutationFn: (conversationId: string) => revokeShare(conversationId),
+    onSuccess: (_data, conversationId) => {
+      queryClient.invalidateQueries({ queryKey: ['share', conversationId] });
     },
   });
 }

@@ -39,6 +39,9 @@ AS $$
 DECLARE
   v_count INTEGER;
 BEGIN
+  -- Clear any prior snapshot first (idempotent: safe for create and resync).
+  DELETE FROM public.shared_messages WHERE shared_conversation_id = p_share_id;
+
   IF p_share_mode = 'entire' THEN
     -- Copy all non-deleted messages, remapping IDs via CTE self-join
     WITH with_new_ids AS (
@@ -72,6 +75,10 @@ BEGIN
     LEFT JOIN with_new_ids prev ON w.previous_message_id = prev.original_id;
 
     GET DIAGNOSTICS v_count = ROW_COUNT;
+    IF v_count = 0 THEN
+      -- Raise so the DELETE rolls back instead of committing an empty snapshot.
+      RAISE EXCEPTION 'No messages to share';
+    END IF;
     RETURN v_count;
 
   ELSIF p_share_mode = 'latest_thread' THEN
@@ -101,7 +108,8 @@ BEGIN
       SELECT parent.id, parent.previous_message_id, parent.sender_type, parent.content, parent.metadata, parent.created_at
       FROM public.messages parent
       JOIN chain c ON parent.id = c.previous_message_id
-      WHERE parent.deleted_at IS NULL
+      WHERE parent.conversation_id = p_conversation_id
+        AND parent.deleted_at IS NULL
     ),
     with_new_ids AS (
       SELECT
@@ -132,6 +140,10 @@ BEGIN
     LEFT JOIN with_new_ids prev ON w.previous_message_id = prev.original_id;
 
     GET DIAGNOSTICS v_count = ROW_COUNT;
+    IF v_count = 0 THEN
+      -- Raise so the DELETE rolls back instead of committing an empty snapshot.
+      RAISE EXCEPTION 'No messages to share';
+    END IF;
     RETURN v_count;
 
   ELSIF p_share_mode = 'visible_thread' THEN
@@ -181,6 +193,10 @@ BEGIN
     LEFT JOIN with_new_ids prev ON w.previous_message_id = prev.original_id;
 
     GET DIAGNOSTICS v_count = ROW_COUNT;
+    IF v_count = 0 THEN
+      -- Raise so the DELETE rolls back instead of committing an empty snapshot.
+      RAISE EXCEPTION 'No messages to share';
+    END IF;
     RETURN v_count;
 
   ELSE

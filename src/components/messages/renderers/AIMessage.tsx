@@ -70,8 +70,8 @@ export const AIMessage = memo(function AIMessage({
   const [comment, setComment] = useState('');
   const isTouchDevice = useIsTouchDevice();
 
-  // Fetch current feedback state for this message
-  const { data: feedbackData } = useMessageFeedback(message.id);
+  // readOnly → null suppresses the (authenticated) feedback fetch on the public share view.
+  const { data: feedbackData } = useMessageFeedback(readOnly ? null : message.id);
 
   // Mutation for creating/updating/deleting feedback
   const submitFeedback = useMessageFeedbackMutation(message.id);

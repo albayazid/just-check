@@ -30,13 +30,13 @@ export interface StoredSharedConversation {
   source_conversation_id: string;
   owner_clerk_user_id: string;
   title: string | null;
-  owner_display_name: string | null;
   share_mode: ShareMode;
   is_active: boolean;
   created_at: string;
   updated_at: string;
   revoked_at: string | null;
   expires_at: string | null;
+  synced_at: string;
 }
 
 /**
@@ -64,7 +64,6 @@ export interface StoredSharedMessage {
 export interface CreateShareInput {
   conversationId: string;
   shareMode: ShareMode;
-  showOwnerName: boolean;
   currentLeafMessageId?: string;
   expiresInHours?: number;
 }
@@ -79,15 +78,26 @@ export interface CreateShareResult {
 }
 
 /**
- * A share item in the list response
+ * Input for the resync ("Update link") action — re-freezes an existing share
+ * with the chosen settings, keeping the same token.
  */
-export interface ShareListItem {
+export interface RefreshShareInput {
+  shareMode: ShareMode;
+  currentLeafMessageId?: string;
+}
+
+/**
+ * The single active share for a conversation (one active share per conversation).
+ * Returned by the owner-facing GET endpoint.
+ */
+export interface ShareConversationView {
   id: string;
   token: string;
   shareMode: ShareMode;
   isActive: boolean;
   createdAt: string;
-  revokedAt: string | null;
+  syncedAt: string | null;
+  expiresAt: string | null;
 }
 
 /**
