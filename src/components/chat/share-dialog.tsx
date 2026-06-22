@@ -75,9 +75,11 @@ function formatRelativeTime(iso: string | null): string {
 // ============================================================================
 
 function ShareModeSelector({
+  modes,
   value,
   onChange,
 }: {
+  modes: typeof SHARE_MODES;
   value: ShareMode;
   onChange: (mode: ShareMode) => void;
 }) {
@@ -85,7 +87,7 @@ function ShareModeSelector({
     <div className="space-y-2">
       <Label className="text-sm font-medium">What to share</Label>
       <div className="space-y-1.5">
-        {SHARE_MODES.map((mode) => {
+        {modes.map((mode) => {
           const Icon = mode.icon;
           const isSelected = value === mode.value;
           return (
@@ -151,10 +153,17 @@ export function ShareDialog({
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const shareUrl = share ? `${origin}/share/${share.token}` : null;
   const leafMissing = shareMode === 'visible_thread' && !currentLeafMessageId;
+  // visible_thread needs the in-view leaf; hide it when invoked without one (e.g. from the sidebar).
+  const availableModes = currentLeafMessageId
+    ? SHARE_MODES
+    : SHARE_MODES.filter((m) => m.value !== 'visible_thread');
 
   const beginEdit = () => {
     if (!share) return;
-    setShareMode(share.shareMode);
+    // Keep the share's current mode if it's still selectable; otherwise (e.g. a
+    // visible_thread share opened from the sidebar, where there's no leaf) fall
+    // back to entire so the picker shows a valid pre-selection.
+    setShareMode(availableModes.some((m) => m.value === share.shareMode) ? share.shareMode : 'entire');
     setEditing(true);
   };
 
@@ -249,7 +258,7 @@ export function ShareDialog({
 
         {view === 'create' && (
           <div className="py-2">
-            <ShareModeSelector value={shareMode} onChange={setShareMode} />
+            <ShareModeSelector modes={availableModes} value={shareMode} onChange={setShareMode} />
           </div>
         )}
 
@@ -280,7 +289,7 @@ export function ShareDialog({
             <p className="text-sm text-muted-foreground mb-4">
               The link stays the same; only what it shows will change.
             </p>
-            <ShareModeSelector value={shareMode} onChange={setShareMode} />
+            <ShareModeSelector modes={availableModes} value={shareMode} onChange={setShareMode} />
           </div>
         )}
 

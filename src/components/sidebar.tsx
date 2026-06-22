@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useIsTouchDevice } from '@/hooks/use-touch-device';
-import { useConversations, usePinnedConversations, useRenameConversation, usePinConversation, useArchiveConversation, usePinnedCount } from '@/hooks/use-conversations';
+import { useConversations, usePinnedConversations, useRenameConversation, usePinConversation, useArchiveConversation, usePinnedCount, useForkConversation } from '@/hooks/use-conversations';
 import { useFolders, useCreateFolder, useUpdateFolder, useDeleteFolder, useFolderLimit } from '@/hooks/use-folders';
 import { useSubscription } from '@/hooks/use-subscription';
 import { getPlanDisplayName } from '@/lib/subscription-utils';
@@ -31,7 +31,10 @@ import {
   Folder,
   FolderOpen,
   CircleEllipsis,
+  Share2,
+  GitFork,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -71,6 +74,7 @@ import { Input } from '@/components/ui/input';
 import { FolderDialog } from '@/components/folder-dialog';
 import { DeleteConversationDialog } from '@/components/conversations/delete-conversation-dialog';
 import { MoveToFolderDialog } from '@/components/conversations/move-to-folder-dialog';
+import { ShareDialog } from '@/components/chat/share-dialog';
 import { useActiveChatId } from '@/hooks/use-active-chat-id';
 import type { StoredConversation, ConversationFolder } from '@/lib/chat-history';
 
@@ -109,6 +113,7 @@ function ChatSidebar() {
   const [newTitle, setNewTitle] = useState('');
   const [moveToFolderDialogOpen, setMoveToFolderDialogOpen] = useState(false);
   const [conversationToMove, setConversationToMove] = useState<string | null>(null);
+  const [shareConversationId, setShareConversationId] = useState<string | null>(null);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderToEdit, setFolderToEdit] = useState<ConversationFolder | null>(null);
   const [folderDialogError, setFolderDialogError] = useState<string | null>(null);
@@ -121,6 +126,7 @@ function ChatSidebar() {
   const renameConversation = useRenameConversation();
   const pinConversation = usePinConversation();
   const archiveConversation = useArchiveConversation();
+  const forkMutation = useForkConversation();
   const { data: pinnedCountData } = usePinnedCount();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -189,6 +195,13 @@ function ChatSidebar() {
     router.push(href);
     closeMobile();
   }, [router, closeMobile]);
+
+  const handleFork = (conversationId: string) => {
+    forkMutation.mutate(conversationId, {
+      onSuccess: (data) => navigate(`/chats/${data.conversationId}`),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to fork'),
+    });
+  };
 
   return (
     <Sidebar collapsible="icon">
@@ -385,6 +398,8 @@ function ChatSidebar() {
                     setConversationToMove(conversation.id);
                     setMoveToFolderDialogOpen(true);
                   }}
+                  onShare={() => setShareConversationId(conversation.id)}
+                  onFork={() => handleFork(conversation.id)}
                 />
               ))}
             </SidebarMenu>
@@ -430,6 +445,8 @@ function ChatSidebar() {
                       setConversationToMove(conversation.id);
                       setMoveToFolderDialogOpen(true);
                     }}
+                    onShare={() => setShareConversationId(conversation.id)}
+                    onFork={() => handleFork(conversation.id)}
                   />
                 ))}
 
@@ -696,6 +713,14 @@ function ChatSidebar() {
           if (!open) setConversationToMove(null);
         }}
       />
+      <ShareDialog
+        open={!!shareConversationId}
+        onOpenChange={(open) => {
+          if (!open) setShareConversationId(null);
+        }}
+        conversationId={shareConversationId ?? ''}
+        currentLeafMessageId={null}
+      />
     </Sidebar>
   );
 }
@@ -714,6 +739,8 @@ interface ConversationItemProps {
   onPin: () => void;
   onArchive: () => void;
   onMoveToFolder: () => void;
+  onShare: () => void;
+  onFork: () => void;
 }
 
 function ConversationItem({
@@ -727,6 +754,8 @@ function ConversationItem({
   onPin,
   onArchive,
   onMoveToFolder,
+  onShare,
+  onFork,
 }: ConversationItemProps) {
   const isPinned = !!conversation.pinned_at;
 
@@ -764,6 +793,12 @@ function ConversationItem({
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={onMoveToFolder}>
             <FolderInput /> Move to folder
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onShare}>
+            <Share2 /> Share
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onFork}>
+            <GitFork /> Fork
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={onDelete}>
