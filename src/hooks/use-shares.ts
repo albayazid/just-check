@@ -145,7 +145,12 @@ export function usePublicShare(token: string) {
 
 /** Fork a shared conversation into the user's account (auth required) */
 export function useForkShare() {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: forkShare,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    },
   });
 }

@@ -3,11 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import {
   Archive,
   ArchiveRestore,
   Check,
   FolderInput,
+  GitFork,
   Menu,
   MessageCirclePlus,
   MoreHorizontal,
@@ -20,6 +23,7 @@ import {
 import { useConversation } from '@/hooks/use-conversation';
 import {
   useArchiveConversation,
+  useForkConversation,
   usePinConversation,
   usePinnedCount,
   useRenameConversation,
@@ -59,6 +63,8 @@ export default function ChatPageHeader({ chatId, currentLeafMessageId }: ChatPag
   const renameConversation = useRenameConversation();
   const pinConversation = usePinConversation();
   const archiveConversation = useArchiveConversation();
+  const forkMutation = useForkConversation();
+  const router = useRouter();
   const { data: pinnedCountData } = usePinnedCount();
   const queryClient = useQueryClient();
 
@@ -106,6 +112,16 @@ export default function ChatPageHeader({ chatId, currentLeafMessageId }: ChatPag
   const cancelRename = () => {
     setDraftTitle(title || '');
     setIsEditing(false);
+  };
+
+  const handleFork = () => {
+    forkMutation.mutate(chatId, {
+      onSuccess: (data) => {
+        toast.success('Forked to a new chat');
+        router.push(`/chats/${data.conversationId}`);
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to fork'),
+    });
   };
 
   return (
@@ -259,6 +275,9 @@ export default function ChatPageHeader({ chatId, currentLeafMessageId }: ChatPag
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setMoveOpen(true)}>
               <FolderInput /> Move to folder
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleFork}>
+              <GitFork /> Fork
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>

@@ -377,3 +377,36 @@ export async function getPinnedCount(clerkUserId: string): Promise<{
     canPin: pinnedCount < PIN_LIMIT,
   };
 }
+
+/**
+ * Forks one of the user's own conversations into a standalone copy. Delegates
+ * to the fork_conversation RPC (ownership check, new conversation + remapped
+ * message copy, provenance tagged) — zero messages pass through Node memory.
+ *
+ * @returns The new conversation id.
+ * @throws Error 'Conversation not found' if not owned/deleted, or 'No messages to fork'.
+ */
+export async function forkConversation(
+  sourceConversationId: string,
+  clerkUserId: string,
+): Promise<{ conversationId: string }> {
+  const supabase = getSupabaseAdminClient();
+
+  const { data: conversationId, error } = await supabase.rpc('fork_conversation', {
+    p_source_conversation_id: sourceConversationId,
+    p_owner_id: clerkUserId,
+  });
+
+  if (error) {
+    const message = error.message;
+    if (message.includes('not found')) {
+      throw new Error('Conversation not found');
+    }
+    if (message.includes('No messages')) {
+      throw new Error('No messages to fork');
+    }
+    throw new Error(`Failed to fork conversation: ${message}`);
+  }
+
+  return { conversationId };
+}

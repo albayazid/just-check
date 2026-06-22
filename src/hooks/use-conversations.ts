@@ -609,3 +609,24 @@ export function useDeleteAllConversations() {
     },
   });
 }
+
+async function forkConversation(conversationId: string): Promise<{ conversationId: string }> {
+  const response = await fetch(`/api/conversations/${conversationId}/fork`, { method: 'POST' });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to fork conversation');
+  }
+  return response.json();
+}
+
+/** Fork one of the user's own conversations into a standalone copy. */
+export function useForkConversation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (conversationId: string) => forkConversation(conversationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    },
+  });
+}
