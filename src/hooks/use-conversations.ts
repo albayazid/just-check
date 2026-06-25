@@ -2,6 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { useRouter, usePathname } from 'next/navigation';
 import type { InfiniteData } from '@tanstack/react-query';
 import type { ListConversationsResult, StoredConversation } from '@/lib/chat-history';
+import type { ConversationData } from './use-conversation';
 
 // ============================================================================
 // FETCH (List)
@@ -116,7 +117,10 @@ async function createConversation(params?: CreateConversationParams): Promise<Cr
   const response = await fetch('/api/conversations/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: params?.title, isTemporary: params?.isTemporary === true }),
+    body: JSON.stringify({
+      title: params?.title,
+      isTemporary: params?.isTemporary === true,
+    }),
   });
   if (!response.ok) throw new Error('Failed to create conversation');
   return response.json();
@@ -268,8 +272,8 @@ export function useRenameConversation() {
       // Optimistically update the single-conversation cache consumed by the chat
       // header so the title flips instantly instead of waiting for a refetch.
       const singleKey = ['conversation', conversationId] as const;
-      const previousSingle = queryClient.getQueryData<{ title: string | null; pinned_at: string | null }>(singleKey);
-      queryClient.setQueryData<{ title: string | null; pinned_at: string | null }>(singleKey, (old) =>
+      const previousSingle = queryClient.getQueryData<ConversationData>(singleKey);
+      queryClient.setQueryData<ConversationData>(singleKey, (old) =>
         old ? { ...old, title: newTitle } : old
       );
 

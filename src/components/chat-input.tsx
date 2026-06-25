@@ -14,6 +14,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsTouchDevice } from "@/hooks/use-touch-device";
 import { useAttachmentUrl } from "@/hooks/use-attachment-url";
 import { isWebSpeechRecognitionSupported } from "@/lib/input-speech-recognition/providers/web-speech-api";
 import { useInputModality } from "@/hooks/use-input-modality";
@@ -36,15 +37,17 @@ import {
   RefreshCw,
   AlertTriangle,
   Clock,
-  Zap
+  Zap,
+  Sparkles,
+  GraduationCap
 } from "lucide-react";
 import { UIModels, NormalModels, RawModels } from "@/lib/models";
+import { MODES, getModeById } from "@/lib/modes";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubTrigger,
@@ -56,8 +59,13 @@ import {
 } from "@/components/ui/drawer";
 
 // The MAX_FILES constant is hardcoded rn. Different use cases or user tiers may require different limits.
-// TODO || P8: Suggestion: Consider making this configurable via props or environment 
+// TODO || P8: Suggestion: Consider making this configurable via props or environment
 const MAX_FILES = 5;
+
+// Per-mode trigger/list icon. Falls back to Sparkles for unmapped or Default.
+const MODE_ICONS: Record<string, typeof Sparkles> = {
+  study: GraduationCap,
+};
 
 interface ChatInputAttachment {
   url: string;
@@ -78,6 +86,10 @@ interface ChatInputProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onS
   selectedUIModelId: string;
   /** Called when the user selects a different model */
   onUIModelChange: (uiModelId: string) => void;
+  /** Currently selected chat mode ID (null = Default). When provided, a mode toggle is shown. */
+  selectedModeId?: string | null;
+  /** Called when the user changes the chat mode (null = Default/off). */
+  onModeChange?: (modeId: string | null) => void;
   maxInputCharacterLength?: number;
   /** The user's plan ID. `undefined` while loading. */
   planId?: string | undefined;
@@ -203,6 +215,8 @@ export function ChatInput({
   onLiveVoiceChat,
   selectedUIModelId,
   onUIModelChange,
+  selectedModeId = null,
+  onModeChange,
   maxInputCharacterLength,
   planId,
   hasAllowance,
@@ -230,6 +244,7 @@ export function ChatInput({
   const [isMobileAdvancedDrawerOpen, setIsMobileAdvancedDrawerOpen] = useState(false);
   const [keptAttachments, setKeptAttachments] = useState(existingAttachments ?? []);
   const isMobile = useIsMobile();
+  const isTouchDevice = useIsTouchDevice();
   const attachedFilesRef = useRef<AttachedFile[]>([]);
   const dragCounterRef = useRef(0);
 
@@ -817,6 +832,10 @@ export function ChatInput({
     textareaRef.current?.focus();
   };
 
+  const activeMode = getModeById(selectedModeId);
+  const ModeIcon = activeMode ? (MODE_ICONS[activeMode.id] ?? Sparkles) : Sparkles;
+  const showModeToggle = !!onModeChange;
+
   return (
     <TooltipProvider>
       <div className="relative w-full">
@@ -1160,6 +1179,69 @@ export function ChatInput({
                     </div>
                   )}
                 </div>
+
+                {showModeToggle && (
+                  <>
+                    {/* Mode settings — opens a dropdown of available modes */}
+                    <DropdownMenu modal={false}>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="rounded-xl transition-all duration-200 h-9 w-9 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                          aria-label="Chat mode"
+                        >
+                          <Settings2 className="size-5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="start"
+                        className="w-56 bg-card/95 backdrop-blur-lg border-border text-foreground"
+                      >
+                        {MODES.map((mode) => {
+                          const Icon = MODE_ICONS[mode.id] ?? Sparkles;
+                          const isActive = selectedModeId === mode.id;
+                          return (
+                            <DropdownMenuItem
+                              key={mode.id}
+                              onClick={() => onModeChange?.(mode.id)}
+                              className={cn(
+                                "flex items-center gap-2 cursor-pointer focus:bg-muted/50",
+                                isActive && "bg-primary/10"
+                              )}
+                            >
+                              <Icon className={cn("size-4", isActive ? "text-primary" : "text-muted-foreground")} />
+                              <span className={cn("font-medium", isActive ? "text-primary" : "text-foreground")}>
+                                {mode.name}
+                              </span>
+                              {isActive && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    {/* Active mode badge — click anywhere to clear back to Default.
+                        On PC the cap icon swaps to an X on hover; on touch an X sits at the right. */}
+                    {activeMode && (
+                      <button
+                        type="button"
+                        onClick={() => onModeChange?.(null)}
+                        aria-label={`Turn off ${activeMode.name}`}
+                        className="group inline-flex items-center gap-1 rounded-xl border border-primary/30 bg-primary/10 px-2 py-1 text-primary transition-colors hover:bg-primary/15"
+                      >
+                        <span className="relative inline-flex size-4 shrink-0 items-center justify-center">
+                          <ModeIcon className={cn("size-4 transition-opacity", !isTouchDevice && "group-hover:opacity-0")} />
+                          {!isTouchDevice && (
+                            <X className="absolute inset-0 m-auto size-4 opacity-0 transition-opacity group-hover:opacity-100" />
+                          )}
+                        </span>
+                        <span className="text-[13px] font-medium leading-none">{activeMode.shortName}</span>
+                        {isTouchDevice && <X className="size-3" />}
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
 
               <div className="flex items-center space-x-2">

@@ -37,7 +37,11 @@ export async function GET(
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ title: data.title, pinned_at: data.pinned_at, archived_at: data.archived_at });
+    return NextResponse.json({
+      title: data.title,
+      pinned_at: data.pinned_at,
+      archived_at: data.archived_at,
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

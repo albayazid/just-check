@@ -15,6 +15,7 @@ export default function MainClient() {
   const setConversationStarter = useConversationStarterStore((state) => state.setConversationStarter);
   const [isLoading, setIsLoading] = useState(false);
   const [currentUIModelId, setCurrentUIModelId] = useState<string>('fast');
+  const [currentModeId, setCurrentModeId] = useState<string | null>(null);
   const { planId, hasAllowance, remainingPercentage, periodEnd, isLoading: isLoadingAllowance } = useSubscriptionAndAllowanceStatus();
 
   const handleSubmit = (message: string, attachments?: Array<{ url: string; originalName: string; mimeType: string }>) => {
@@ -25,7 +26,7 @@ export default function MainClient() {
 
     setIsLoading(true);
 
-    setConversationStarter({ message: message.trim(), UIModelId: currentUIModelId, attachments });
+    setConversationStarter({ message: message.trim(), UIModelId: currentUIModelId, mode: currentModeId, attachments });
 
     // Use first 256 characters of the message as the conversation title
     const title = message.trim().slice(0, 256);
@@ -87,6 +88,8 @@ export default function MainClient() {
             placeholder="Type your message..."
             selectedUIModelId={currentUIModelId}
             onUIModelChange={setCurrentUIModelId}
+            selectedModeId={currentModeId}
+            onModeChange={setCurrentModeId}
             planId={planId}
             hasAllowance={hasAllowance}
             remainingPercentage={remainingPercentage}

@@ -94,6 +94,8 @@ export interface StepData {
 export interface AssistantResponseMetadata {
   /** Information about the model used */
   model_data: ModelData;
+  /** Active chat mode when this response was generated (null = Default). Persisted per-message. */
+  mode?: string | null;
   /** Whether the response has file attachments */
   hasAttachments: boolean;
   /** Why the response finished */

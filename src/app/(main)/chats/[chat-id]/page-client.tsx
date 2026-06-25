@@ -46,6 +46,7 @@ export default function ChatPageClient() {
         message: conversationStarter.message,
         attachments: conversationStarter.attachments as ChatPageShellAttachment[] | undefined,
         UIModelId: conversationStarter.UIModelId ?? 'fast',
+        mode: conversationStarter.mode ?? null,
       }
     : null;
 
@@ -68,7 +69,7 @@ export default function ChatPageClient() {
           historyContent={<ChatHistorySkeleton />}
           pendingMessage={pendingMessage}
           onPendingMessageConsumed={clearConversationStarter}
-          onSubmitMessage={({ text, attachments, currentUIModelId, displayedMessages, sendMessage, getLastRealMessageId }) => {
+          onSubmitMessage={({ text, attachments, currentUIModelId, currentModeId, displayedMessages, sendMessage, getLastRealMessageId }) => {
             sendMessage(
               {
                 parts: [
@@ -84,23 +85,24 @@ export default function ChatPageClient() {
               {
                 body: {
                   UIModelId: currentUIModelId,
+                  mode: currentModeId,
                   previousMessageId: getLastRealMessageId(displayedMessages),
                 },
               }
             );
           }}
-          onSubmitEditedMessage={({ parts, previousMessageId, currentUIModelId, sendMessage }) => {
+          onSubmitEditedMessage={({ parts, previousMessageId, currentUIModelId, currentModeId, sendMessage }) => {
             sendMessage(
               { parts },
               {
-                body: { UIModelId: currentUIModelId, previousMessageId },
+                body: { UIModelId: currentUIModelId, mode: currentModeId, previousMessageId },
               }
             );
           }}
-          onSubmitRegeneratedMessage={({ messageId, currentUIModelId, regenerate }) => {
+          onSubmitRegeneratedMessage={({ messageId, currentUIModelId, currentModeId, regenerate }) => {
             regenerate({
               messageId,
-              body: { UIModelId: currentUIModelId },
+              body: { UIModelId: currentUIModelId, mode: currentModeId },
             });
           }}
           canSendMessages={!!hasAllowance}

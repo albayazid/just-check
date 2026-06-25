@@ -102,6 +102,8 @@ export interface ClientMessageMetadata {
   model_data?: {
     UIModelId: string;
   };
+  /** Active chat mode for this message (null = Default). */
+  mode?: string | null;
   [key: string]: unknown;
 }
 // ============================================================================

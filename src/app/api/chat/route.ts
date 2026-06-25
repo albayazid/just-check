@@ -43,6 +43,8 @@ const chatBodySchema = z.object({
   messages: z.array(z.any()).min(1),
   id: z.string().uuid(),
   UIModelId: z.string().min(1),
+  /** Ephemeral chat mode for this turn (null/unknown = Default). Sent per-message like UIModelId. */
+  mode: z.string().nullable().optional(),
   previousMessageId: z.string().uuid().nullable().optional(),
   trigger: z.string().optional(),
   messageId: z.string().uuid().optional(),
@@ -67,7 +69,7 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const { messages: rawMessages, id: conversationId, UIModelId, previousMessageId: clientPreviousMessageId, trigger, messageId } = parsed.data;
+    const { messages: rawMessages, id: conversationId, UIModelId, mode: bodyMode, previousMessageId: clientPreviousMessageId, trigger, messageId } = parsed.data;
 
     // Validate message structure and application constraints
     const messageValidation = await validateChatMessages(rawMessages);
@@ -293,7 +295,13 @@ export async function POST(req: Request) {
       }
     }
 
-    const systemPrompt = buildSystemPrompt(userAISettings, { memoryMarkdown: formattedMemoryList });
+    // Resolve the ephemeral chat mode sent per-message (null/unknown = Default).
+    const conversationMode = typeof bodyMode === 'string' ? bodyMode : null;
+
+    const systemPrompt = buildSystemPrompt(userAISettings, {
+      memoryMarkdown: formattedMemoryList,
+      mode: conversationMode,
+    });
 
     // Generate assistant message ID upfront for tool charging
     // For new user turns: generate new ID
@@ -442,6 +450,7 @@ export async function POST(req: Request) {
             model_data: {
               UIModelId,
             },
+            mode: conversationMode,
           };
         }
 
@@ -511,6 +520,7 @@ export async function POST(req: Request) {
         const serverMetadata: AssistantResponseMetadata = {
           // Client fields (will be merged from assistantMessage.metadata)
           model_data: { UIModelId, internalModelId, provider },
+          mode: conversationMode,
           hasAttachments: hasFiles,
           finishReason: isAborted ? 'abort' : (finishReason || 'unknown'),
 

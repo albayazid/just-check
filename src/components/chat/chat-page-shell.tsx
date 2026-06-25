@@ -32,6 +32,8 @@ export type ChatPageShellPendingMessage = {
   message: string;
   attachments?: ChatPageShellAttachment[];
   UIModelId: string;
+  /** Ephemeral chat mode for this pending send (null = Default). */
+  mode?: string | null;
   body?: Record<string, unknown>;
 };
 
@@ -47,6 +49,7 @@ type ChatPageSendContext = {
   text: string;
   attachments?: ChatPageShellAttachment[];
   currentUIModelId: string;
+  currentModeId: string | null;
   displayedMessages: UIMessage[];
   sendMessage: ReturnType<typeof useChat>['sendMessage'];
   getLastRealMessageId: typeof getLastRealMessageId;
@@ -56,6 +59,7 @@ type ChatPageEditContext = {
   parts: EditMessagePart[];
   previousMessageId: string | null;
   currentUIModelId: string;
+  currentModeId: string | null;
   sendMessage: ReturnType<typeof useChat>['sendMessage'];
 };
 
@@ -63,6 +67,7 @@ type ChatPageRegenerateContext = {
   messageId: string;
   parentId: string | null;
   currentUIModelId: string;
+  currentModeId: string | null;
   regenerate: ReturnType<typeof useChat>['regenerate'];
 };
 
@@ -143,6 +148,8 @@ export function ChatPageShell({
   const prevActivePathRef = useRef<string[]>([]);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [currentUIModelId, setCurrentUIModelId] = useState<string>(initialUIModelId);
+  // Ephemeral chat mode — owned here like the model, never persisted (resets on reload).
+  const [currentModeId, setCurrentModeId] = useState<string | null>(null);
 
   const { messages, sendMessage, regenerate, status, stop, setMessages, addToolOutput } = useChat({
     id: chatId,
@@ -237,6 +244,7 @@ export function ChatPageShell({
       {
         body: {
           UIModelId: pendingMessage.UIModelId,
+          mode: pendingMessage.mode ?? null,
           previousMessageId: getLastRealMessageId(displayedMessages),
           ...pendingMessage.body,
         },
@@ -261,11 +269,12 @@ export function ChatPageShell({
       text,
       attachments,
       currentUIModelId,
+      currentModeId,
       displayedMessages,
       sendMessage,
       getLastRealMessageId,
     });
-  }, [canSendMessages, currentUIModelId, displayedMessages, onSubmitMessage, sendMessage]);
+  }, [canSendMessages, currentModeId, currentUIModelId, displayedMessages, onSubmitMessage, sendMessage]);
 
   const handleEditMessage = useCallback((parts: EditMessagePart[], previousMessageId: string | null) => {
     if (!canMutateMessages) {
@@ -285,9 +294,10 @@ export function ChatPageShell({
       parts,
       previousMessageId,
       currentUIModelId,
+      currentModeId,
       sendMessage,
     });
-  }, [branchState, canMutateMessages, currentUIModelId, onSubmitEditedMessage, sendMessage, setMessages, toUIMessage]);
+  }, [branchState, canMutateMessages, currentModeId, currentUIModelId, onSubmitEditedMessage, sendMessage, setMessages, toUIMessage]);
 
   const handleRegenerateMessage = useCallback((messageId: string, parentId: string | null) => {
     if (!canMutateMessages) {
@@ -299,9 +309,10 @@ export function ChatPageShell({
       messageId,
       parentId,
       currentUIModelId,
+      currentModeId,
       regenerate,
     });
-  }, [branchState, canMutateMessages, currentUIModelId, onSubmitRegeneratedMessage, regenerate]);
+  }, [branchState, canMutateMessages, currentModeId, currentUIModelId, onSubmitRegeneratedMessage, regenerate]);
 
   const scrollToBottom = useCallback(() => {
     if (messagesContainerRef.current) {
@@ -440,6 +451,8 @@ export function ChatPageShell({
                 placeholder="Type your message..."
                 selectedUIModelId={currentUIModelId}
                 onUIModelChange={setCurrentUIModelId}
+                selectedModeId={currentModeId}
+                onModeChange={setCurrentModeId}
                 planId={planId}
                 hasAllowance={hasAllowance}
                 remainingPercentage={remainingPercentage}

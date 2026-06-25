@@ -214,7 +214,7 @@ export default function TemporaryChatPageClient() {
             setPendingFirstMessage(null);
             setIsPreparingFirstSend(false);
           }}
-          onSubmitMessage={async ({ text, attachments, currentUIModelId, displayedMessages, sendMessage, getLastRealMessageId }) => {
+          onSubmitMessage={async ({ text, attachments, currentUIModelId, currentModeId, displayedMessages, sendMessage, getLastRealMessageId }) => {
             if (!hasAllowance) {
               return;
             }
@@ -243,6 +243,7 @@ export default function TemporaryChatPageClient() {
                 message: trimmedText,
                 attachments: attachments as ChatPageShellAttachment[] | undefined,
                 UIModelId: currentUIModelId,
+                mode: currentModeId,
               });
 
               try {
@@ -262,6 +263,7 @@ export default function TemporaryChatPageClient() {
                   body: {
                     id: conversationId,
                     UIModelId: currentUIModelId,
+                    mode: currentModeId,
                     previousMessageId: getLastRealMessageId(displayedMessages),
                   },
                 }
@@ -270,7 +272,7 @@ export default function TemporaryChatPageClient() {
               toast.error('Unable to start temporary chat. Please try again.');
             }
           }}
-          onSubmitEditedMessage={({ parts, previousMessageId, currentUIModelId, sendMessage }) => {
+          onSubmitEditedMessage={({ parts, previousMessageId, currentUIModelId, currentModeId, sendMessage }) => {
             if (!conversationId) {
               return;
             }
@@ -278,18 +280,18 @@ export default function TemporaryChatPageClient() {
             sendMessage(
               { parts },
               {
-                body: { id: conversationId, UIModelId: currentUIModelId, previousMessageId },
+                body: { id: conversationId, UIModelId: currentUIModelId, mode: currentModeId, previousMessageId },
               }
             );
           }}
-          onSubmitRegeneratedMessage={({ messageId, currentUIModelId, regenerate }) => {
+          onSubmitRegeneratedMessage={({ messageId, currentUIModelId, currentModeId, regenerate }) => {
             if (!conversationId) {
               return;
             }
 
             regenerate({
               messageId,
-              body: { id: conversationId, UIModelId: currentUIModelId },
+              body: { id: conversationId, UIModelId: currentUIModelId, mode: currentModeId },
             });
           }}
           canSendMessages={!!hasAllowance}

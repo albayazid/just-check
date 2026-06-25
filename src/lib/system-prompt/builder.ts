@@ -1,4 +1,5 @@
 import { AICustomizationSettings, DEFAULT_AI_CUSTOMIZATION_SETTINGS } from '@/types/settings';
+import { getModeById, getModePromptSection } from '@/lib/modes';
 
 // ---------------------------------------------------------------------------
 // Section 1 — Identity
@@ -179,6 +180,30 @@ You can store, update, and retrieve durable facts about the user across conversa
 
 export interface BuildSystemPromptOptions {
   memoryMarkdown?: string;
+  /** Active chat mode id (e.g. 'study'). null/undefined/unknown = Default mode. */
+  mode?: string | null;
+}
+
+function buildModeSection(modeId?: string | null): string {
+  const mode = getModeById(modeId);
+  const currentModeName = mode?.name ?? 'Default';
+
+  const lines = [
+    '## Modes',
+    '',
+    'Lumy runs on its standard behavior by default (Default mode). The user can switch to a different mode to change how Lumy responds. When a mode other than Default is active, its specific instructions are dynamicly revealed to you and take precedence over the default behavior.',
+    '',
+    `Current mode: ${currentModeName}.`,
+    '',
+    'The current mode stated above is always the source of truth. The current mode changes based on user selection and context. Mode changes are reflected live, so this section is always up to date. If you followed or mentioned other mode in earlier responses that might be because user was in that mode. Do not assume or infer the active mode from earlier messages in the conversation history. Follow only what is stated above right now.',
+  ];
+
+  // Mode-specific instructions are only appended for a non-Default (active) mode.
+  if (mode) {
+    lines.push('', getModePromptSection(modeId));
+  }
+
+  return '\n\n' + lines.join('\n');
 }
 
 function buildDynamicSuffix(settings: AICustomizationSettings): string {
@@ -273,16 +298,28 @@ function buildMemoryListSuffix(memoryMarkdown?: string): string {
 /**
  * Build the complete system prompt by assembling all sections.
  *
- * Order: Identity → Behavior → Capabilities → [Memory Protocol] → [User Preferences] → [User Memory]
+ * Order: Identity → Behavior → [Modes] → Capabilities → Tools → [Memory Protocol] → [User Preferences] → [User Memory]
+ *
+ * The Modes section always appears right after Behavior: it explains that Lumy
+ * defaults to its standard behavior but the user can switch modes, states the
+ * current mode, and — for a non-Default mode — loads that mode's specific
+ * instructions (which override the default behavior). It precedes User
+ * Preferences so custom instructions remain the highest-priority override.
  *
  * @param settings - User's AI customization settings
  * @param options.memoryMarkdown - Formatted memory bullet list (undefined = memory disabled)
+ * @param options.mode - Active chat mode id (undefined/null/unknown = Default mode)
  */
 export function buildSystemPrompt(
   settings: AICustomizationSettings = DEFAULT_AI_CUSTOMIZATION_SETTINGS,
   options: BuildSystemPromptOptions = {}
 ): string {
-  let prompt = IDENTITY + '\n\n' + BEHAVIOR + '\n\n' + CAPABILITIES + '\n\n' + TOOLS;
+  let prompt = IDENTITY + '\n\n' + BEHAVIOR;
+
+  // Mode knowledge + current mode + (active mode's) specific instructions.
+  prompt += buildModeSection(options.mode);
+
+  prompt += '\n\n' + CAPABILITIES + '\n\n' + TOOLS;
 
   // Memory protocol only when memory is enabled
   if (typeof options.memoryMarkdown === 'string') {

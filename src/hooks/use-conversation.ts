@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
-interface ConversationData {
+export interface ConversationData {
   title: string | null;
   pinned_at: string | null;
   archived_at: string | null;

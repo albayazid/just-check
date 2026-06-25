@@ -13,6 +13,8 @@ interface Attachment {
 interface ConversationStarter {
   message: string;
   UIModelId?: string;
+  /** Ephemeral chat mode carried across the home -> chat transition (like UIModelId). */
+  mode?: string | null;
   attachments?: Attachment[];
 }
 
