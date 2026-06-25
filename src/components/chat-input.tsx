@@ -1357,7 +1357,7 @@ export function ChatInput({
                     </Drawer>
                   </>
                 ) : (
-                  <DropdownMenu>
+                  <DropdownMenu modal={false}>
                     <DropdownMenuTrigger asChild>
                       <Button
                         size="sm"
