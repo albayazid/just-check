@@ -21,6 +21,7 @@ import { useBranchSync } from '@/hooks/use-branch-sync';
 import { getLastRealMessageId, type SiblingInfo } from '@/hooks/use-branch-state';
 import { useOptimisticMessages } from '@/hooks/use-optimistic-messages';
 import { executeClientTool } from '@/lib/tools/client-executors';
+import type { ClientMessageMetadata } from '@/lib/conversation-history/types';
 
 export type ChatPageShellAttachment = {
   url: string;
@@ -147,9 +148,71 @@ export function ChatPageShell({
   const isUserAtBottomRef = useRef(true);
   const prevActivePathRef = useRef<string[]>([]);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const [currentUIModelId, setCurrentUIModelId] = useState<string>(initialUIModelId);
-  // Ephemeral chat mode — owned here like the model, never persisted (resets on reload).
-  const [currentModeId, setCurrentModeId] = useState<string | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // Ephemeral model & mode selections, owned here (never persisted to the
+  // conversation). Two seeding sources, both already available to the shell:
+  //
+  // 1. Handoff (home/temp first send): `pendingMessage` carries the model/mode
+  //    the user chose before this chat existed. Seed from it at mount so the
+  //    toggle matches turn 1 instead of snapping back to defaults (which left
+  //    the model picker and the mode toggle out of sync from message 2 on).
+  // 2. Reload recovery: when history loads, reflect the model & mode of the
+  //    most recent assistant reply, so reopening a chat restores the toggles.
+  //
+  // An explicit user pick always wins: once the user (or a carried handoff) has
+  // chosen, the flags below stop recovery from overriding it.
+  // ---------------------------------------------------------------------------
+  const [userPickedUIModel, setUserPickedUIModel] = useState(Boolean(pendingMessage));
+  const [userPickedMode, setUserPickedMode] = useState(Boolean(pendingMessage));
+
+  const [currentUIModelId, setCurrentUIModelId] = useState<string>(
+    pendingMessage?.UIModelId ?? initialUIModelId
+  );
+  const [currentModeId, setCurrentModeId] = useState<string | null>(
+    pendingMessage?.mode ?? null
+  );
+
+  // Reload recovery. Uses the React "adjust state when data changes" pattern
+  // (conditional setState during render) rather than an effect, so it can't
+  // cascade. Fires whenever the history snapshot reference changes.
+  const [historySnapshot, setHistorySnapshot] = useState(messagesData);
+  if (messagesData !== historySnapshot) {
+    setHistorySnapshot(messagesData);
+
+    // Walk back to the most recent assistant message that actually carries
+    // client metadata, skipping old/malformed ones that have neither model nor
+    // mode, so recovery falls back to an earlier well-formed reply.
+    const msgs = messagesData?.messages;
+    if (msgs && msgs.length > 0) {
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role !== 'assistant') continue;
+        const meta = msgs[i].metadata as ClientMessageMetadata | undefined;
+        if (!meta) continue;
+        const hasModel = !!meta.model_data?.UIModelId;
+        const hasMode = meta.mode !== undefined; // null is a real value (Default)
+        if (!hasModel && !hasMode) continue;
+
+        if (!userPickedUIModel && hasModel) {
+          setCurrentUIModelId(meta.model_data!.UIModelId);
+        }
+        if (!userPickedMode && hasMode) {
+          setCurrentModeId(meta.mode ?? null);
+        }
+        break;
+      }
+    }
+  }
+
+  const handleUIModelChange = useCallback((id: string) => {
+    setUserPickedUIModel(true);
+    setCurrentUIModelId(id);
+  }, []);
+
+  const handleModeChange = useCallback((id: string | null) => {
+    setUserPickedMode(true);
+    setCurrentModeId(id);
+  }, []);
 
   const { messages, sendMessage, regenerate, status, stop, setMessages, addToolOutput } = useChat({
     id: chatId,
@@ -401,7 +464,7 @@ export function ChatPageShell({
                       onBranchPrevious={branchParentId !== undefined ? () => handleBranchPrevious(branchParentId) : undefined}
                       onBranchNext={branchParentId !== undefined ? () => handleBranchNext(branchParentId) : undefined}
                       selectedUIModelId={currentUIModelId}
-                      onUIModelChange={setCurrentUIModelId}
+                      onUIModelChange={handleUIModelChange}
                       hasAllowance={hasAllowance}
                       isLoadingAllowance={isLoadingAllowance}
                     />
@@ -450,9 +513,9 @@ export function ChatPageShell({
                 onStopGenerating={stop}
                 placeholder="Type your message..."
                 selectedUIModelId={currentUIModelId}
-                onUIModelChange={setCurrentUIModelId}
+                onUIModelChange={handleUIModelChange}
                 selectedModeId={currentModeId}
-                onModeChange={setCurrentModeId}
+                onModeChange={handleModeChange}
                 planId={planId}
                 hasAllowance={hasAllowance}
                 remainingPercentage={remainingPercentage}

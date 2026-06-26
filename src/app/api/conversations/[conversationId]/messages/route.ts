@@ -14,6 +14,7 @@ function filterClientMetadata(meta: AssistantResponseMetadata | undefined): Clie
 
     return {
         model_data: meta.model_data ? { UIModelId: meta.model_data.UIModelId } : undefined,
+        mode: meta.mode,
     };
 }
 
