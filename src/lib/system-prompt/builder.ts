@@ -175,7 +175,26 @@ You can store, update, and retrieve durable facts about the user across conversa
 - Incorporate remembered information naturally into responses.`;
 
 // ---------------------------------------------------------------------------
-// Section 6 — Dynamic User Preferences
+// Section 6 — Current Time
+// ---------------------------------------------------------------------------
+function buildCurrentTimeSection(): string {
+  const now = new Date();
+  const formatted = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'UTC',
+    hour12: false,
+  });
+
+  return `\n\nCurrent Time: ${formatted} (UTC).`;
+}
+
+// ---------------------------------------------------------------------------
+// Section 8 — Dynamic User Preferences
 // ---------------------------------------------------------------------------
 
 export interface BuildSystemPromptOptions {
@@ -279,7 +298,7 @@ function buildDynamicSuffix(settings: AICustomizationSettings): string {
 }
 
 // ---------------------------------------------------------------------------
-// Section 7 — User Memory List (conditional: only when memory is enabled)
+// Section 9 — User Memory List (conditional: only when memory is enabled)
 // ---------------------------------------------------------------------------
 function buildMemoryListSuffix(memoryMarkdown?: string): string {
   if (typeof memoryMarkdown !== 'string') {
@@ -298,13 +317,7 @@ function buildMemoryListSuffix(memoryMarkdown?: string): string {
 /**
  * Build the complete system prompt by assembling all sections.
  *
- * Order: Identity → Behavior → [Modes] → Capabilities → Tools → [Memory Protocol] → [User Preferences] → [User Memory]
- *
- * The Modes section always appears right after Behavior: it explains that Lumy
- * defaults to its standard behavior but the user can switch modes, states the
- * current mode, and — for a non-Default mode — loads that mode's specific
- * instructions (which override the default behavior). It precedes User
- * Preferences so custom instructions remain the highest-priority override.
+ * Order: Identity → Current Time → Behavior → [Modes] → Capabilities → Tools → [Memory Protocol] → [User Preferences] → [User Memory]
  *
  * @param settings - User's AI customization settings
  * @param options.memoryMarkdown - Formatted memory bullet list (undefined = memory disabled)
@@ -314,7 +327,12 @@ export function buildSystemPrompt(
   settings: AICustomizationSettings = DEFAULT_AI_CUSTOMIZATION_SETTINGS,
   options: BuildSystemPromptOptions = {}
 ): string {
-  let prompt = IDENTITY + '\n\n' + BEHAVIOR;
+  let prompt = IDENTITY;
+
+  // Current time awareness (appears early in the prompt)
+  prompt += buildCurrentTimeSection();
+
+  prompt += '\n\n' + BEHAVIOR;
 
   // Mode knowledge + current mode + (active mode's) specific instructions.
   prompt += buildModeSection(options.mode);
