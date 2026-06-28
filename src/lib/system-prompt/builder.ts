@@ -190,7 +190,7 @@ function buildCurrentTimeSection(): string {
     hour12: false,
   });
 
-  return `\n\nCurrent Time: ${formatted} (UTC).`;
+  return `\n\n## Current Time\n\nThe current date and time is ${formatted} (UTC).\n\nTreat the supplied current date and time as the authoritative current time for your response. Use it whenever interpreting temporal references, including "today", "now", "yesterday", "tomorrow", relative dates and times, schedules, deadlines, durations, ages, and any other time-sensitive requests.\n\nWhen answering questions about recent or current information, use the supplied date and time as your reference point. Do not infer a different current date or time from your training or prior context.\n\nIf the user's request depends on information that may have changed since your knowledge was last updated, use available external tools when appropriate. Otherwise, answer using the supplied date and time while acknowledging any uncertainty about facts that cannot be verified.`;
 }
 
 // ---------------------------------------------------------------------------
