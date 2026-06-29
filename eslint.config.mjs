@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Test infrastructure (not shipped, linted by vitest/eslint-plugin-playwright):
+    "coverage/**",
+    "playwright-report/**",
+    "test-results/**",
+    "e2e/**",
   ]),
 ]);
 

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+# Cancel stale runs on the same ref when a new commit is pushed.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Typecheck, Test, Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Typecheck is non-blocking for now: `tsc --noEmit` produces 51 TS7016
+      # errors, all from a single root cause — `lucide-react@1.20.0` declares
+      # `typings: dist/lucide-react.d.ts` in its package.json but ships no
+      # `.d.ts` files, so every file importing it fails. This is pre-existing
+      # (the project masks it via `next.config.ts` typescript.ignoreBuildErrors).
+      # Once the lucide-react types are fixed (see plans/testing.md §8), remove
+      # `continue-on-error` so typecheck becomes a hard gate.
+      - name: Typecheck (non-blocking — pre-existing debt)
+        continue-on-error: true
+        run: npm run typecheck
+
+      # Lint is non-blocking for now: the repo has 71 pre-existing eslint
+      # errors (mostly `no-explicit-any` in web-search/website-content
+      # providers) that predate the testing work. See plans/testing.md §8.
+      # Once that debt is cleaned up, remove `continue-on-error` so lint
+      # becomes a hard gate again.
+      - name: Lint (non-blocking — pre-existing debt)
+        continue-on-error: true
+        run: npm run lint
+
+      - name: Run unit + component tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
