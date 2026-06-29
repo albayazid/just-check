@@ -83,18 +83,21 @@ export function createMockSupabaseClient(config: SupabaseMockConfig = {}) {
     const result = () => getter();
     const chain: Record<string, unknown> = {};
 
-    const selfReturning = vi.fn(() => chain);
-    chain.select = selfReturning;
-    chain.eq = selfReturning;
-    chain.neq = selfReturning;
-    chain.in = selfReturning;
-    chain.order = selfReturning;
-    chain.range = selfReturning;
-    chain.limit = selfReturning;
-    chain.insert = selfReturning;
-    chain.update = selfReturning;
-    chain.upsert = selfReturning;
-    chain.delete = selfReturning;
+    // Each chain method is its OWN vi.fn so tests can assert on a specific
+    // method independently (e.g. `chain.select.mock.calls` counts only
+    // `.select()` calls, not `.eq()` / `.upsert()` / etc.).
+    const selfReturning = () => chain;
+    chain.select = vi.fn(selfReturning);
+    chain.eq = vi.fn(selfReturning);
+    chain.neq = vi.fn(selfReturning);
+    chain.in = vi.fn(selfReturning);
+    chain.order = vi.fn(selfReturning);
+    chain.range = vi.fn(selfReturning);
+    chain.limit = vi.fn(selfReturning);
+    chain.insert = vi.fn(selfReturning);
+    chain.update = vi.fn(selfReturning);
+    chain.upsert = vi.fn(selfReturning);
+    chain.delete = vi.fn(selfReturning);
     chain.maybeSingle = vi.fn(() => result());
     // `.single()` is terminal — returns the result object directly. Awaited
     // or destructured, both work since a plain object is "awaitable".

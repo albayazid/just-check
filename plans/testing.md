@@ -152,7 +152,7 @@ every batch boundary.
 | **A. Foundation** | Tooling, configs, `src/test/` skeleton, CI, 2 proof-of-harness tests | 36 | ✅ done |
 | **B. Pure logic** | All pure lib code: `age-validation`, `uuid-utils`, `allowance/{calculations,pricing}`, `models/router`, `modes`, `system-prompt/builder`, `web-search/{time-range,favicon-utils}`, `storage/attachment-url-utils`, `subscription-utils`, `password-validation` | 171 (207 total) | ✅ done |
 | **C1. Billing infra + allowance + subscription routes** | Mock infrastructure (`src/test/mocks/`: supabase chain, clerk, ratelimit, dodo, env), `subscription-utils.server` constants, `allowance/{service,tool-charging,token-usage-log}`, 5 `api/subscription/*` routes | 95 (302 total) | ✅ done |
-| **C2. Dodo webhook** | `app/api/webhooks/dodo` + `buildSubscriptionData` extraction (separate veto-able diff) + signature/idempotency/state-machine tests + 3 deliberate-quirk regression pins | ~30–40 | pending |
+| **C2. Dodo webhook** | `app/api/webhooks/dodo` + `buildSubscriptionData` extraction (separate veto-able diff) + signature/idempotency/state-machine tests + 3 deliberate-quirk regression pins | 43 (345 total) | ✅ done |
 | **D. Chat core** | `app/api/chat/route.ts` (+ helper extraction), `lib/validation/validate-chat-messages`, `lib/conversation-history/*`, `lib/chat-history/*` | ~60–80 | pending |
 | **E. Storage & sharing** | `lib/storage/*`, `lib/sharing/share-service`, `app/api/share/*`, `app/api/upload` | ~50–70 | pending |
 | **F. Remaining API routes** | ~25 CRUD routes (conversations, folders, profile, feedback, memory, onboarding) | ~80–100 | pending |
@@ -170,7 +170,8 @@ happened to import. Target: `lines 80 / functions 75 / branches 70 / statements 
 |-------|-----------:|---------:|----------:|------:|
 | A | ~0.5% | ~0.5% | ~0.7% | ~0.5% |
 | B | 2.81% (198/7027) | 2.66% (134/5024) | 2.47% (36/1452) | 2.85% (191/6696) |
-| **C1 (current)** | **6.31% (444/7027)** | **6.32% (318/5024)** | **3.99% (58/1452)** | **6.51% (436/6696)** |
+| C1 | 6.31% (444/7027) | 6.32% (318/5024) | 3.99% (58/1452) | 6.51% (436/6696) |
+| **C2 (current)** | **8.29% (583/7030)** | **7.52% (378/5022)** | **4.54% (66/1453)** | **8.58% (575/6699)** |
 
 The denominator (~7027 statements after exclusions) is smaller than the raw
 ~22k LOC estimate because v8 counts executable statements, not lines, and the
