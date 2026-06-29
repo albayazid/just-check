@@ -7,6 +7,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // The `server-only` package throws when imported outside a Next.js
+      // server context; Vitest's jsdom env trips the client branch. Stub it
+      // to an empty module so `*.server.ts` modules import cleanly under test.
+      "server-only": path.resolve(__dirname, "./src/test/stubs/server-only.ts"),
     },
   },
   test: {

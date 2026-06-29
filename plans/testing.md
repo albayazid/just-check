@@ -74,6 +74,30 @@ e2e/                        # Playwright specs (Batch I)
 - **No snapshot tests** except for stable generated output.
 - **Hermetic tests** — `clearMocks`/`restoreMocks` are on globally; `cleanup()`
   runs after every test.
+- **Mock factories in `src/test/mocks/`** — reusable builders for external
+  services. Each batch that needs a new service mock adds it here.
+  - `supabase.ts` — `createMockSupabaseClient({ rpc, tables })` returns a
+    chainable client. `tables` accepts a single result (returned for every
+    query) or an array (sequential per query on that table). Chains are
+    memoized per table so call history accumulates. `getInsertedRow(client,
+    table)` extracts insert args with the cast centralised.
+  - `clerk.ts` — `setAuthenticated(auth, id)` / `setUnauthenticated(auth)`.
+  - `ratelimit.ts` — `rateLimitModuleMock()` (all 25 limiters) +
+    `rateLimitAllowed()` / `rateLimitBlocked()` cast helpers (the real
+    `RatelimitResponse` type carries extra fields routes don't read).
+  - `dodo.ts` — `dodoModuleMock()` constants + `dodoResponse(body, init)` for
+    `fetch` stubs.
+  - `env.ts` — `stubDodoProductEnvs(vi)`.
+  - `stubs/server-only.ts` — empty module aliased to `server-only` in
+    `vitest.config.ts` so `*.server.ts` imports don't throw under jsdom.
+- **`vi.mock` factory gotcha** — `restoreMocks: true` wipes any implementation
+  set inside a `vi.mock(...)` factory. Put bare `vi.fn()` in factories and
+  configure implementations in `beforeEach`. Only `auth`/`supabase` survive
+  because they're re-set per-test anyway.
+- **Vitest mock typing gotcha** — `vi.mock` replaces runtime but TypeScript
+  still type-checks against the real module's types. Helpers like
+  `rateLimitAllowed()` return `never` to slip past strict signatures
+  (`RatelimitResponse`, etc.).
 
 ---
 
@@ -127,7 +151,8 @@ every batch boundary.
 |-------|-------|--------------|--------|
 | **A. Foundation** | Tooling, configs, `src/test/` skeleton, CI, 2 proof-of-harness tests | 36 | ✅ done |
 | **B. Pure logic** | All pure lib code: `age-validation`, `uuid-utils`, `allowance/{calculations,pricing}`, `models/router`, `modes`, `system-prompt/builder`, `web-search/{time-range,favicon-utils}`, `storage/attachment-url-utils`, `subscription-utils`, `password-validation` | 171 (207 total) | ✅ done |
-| **C. Billing critical path** | `lib/allowance/{service,tool-charging}`, `lib/subscription-utils{,.server}`, `app/api/subscription/*`, `app/api/webhooks/dodo` | ~50–70 | pending |
+| **C1. Billing infra + allowance + subscription routes** | Mock infrastructure (`src/test/mocks/`: supabase chain, clerk, ratelimit, dodo, env), `subscription-utils.server` constants, `allowance/{service,tool-charging,token-usage-log}`, 5 `api/subscription/*` routes | 95 (302 total) | ✅ done |
+| **C2. Dodo webhook** | `app/api/webhooks/dodo` + `buildSubscriptionData` extraction (separate veto-able diff) + signature/idempotency/state-machine tests + 3 deliberate-quirk regression pins | ~30–40 | pending |
 | **D. Chat core** | `app/api/chat/route.ts` (+ helper extraction), `lib/validation/validate-chat-messages`, `lib/conversation-history/*`, `lib/chat-history/*` | ~60–80 | pending |
 | **E. Storage & sharing** | `lib/storage/*`, `lib/sharing/share-service`, `app/api/share/*`, `app/api/upload` | ~50–70 | pending |
 | **F. Remaining API routes** | ~25 CRUD routes (conversations, folders, profile, feedback, memory, onboarding) | ~80–100 | pending |
@@ -143,9 +168,9 @@ happened to import. Target: `lines 80 / functions 75 / branches 70 / statements 
 
 | Batch | Statements | Branches | Functions | Lines |
 |-------|-----------:|---------:|----------:|------:|
-| (start) | — | — | — | — |
 | A | ~0.5% | ~0.5% | ~0.7% | ~0.5% |
-| **B (current)** | **2.81% (198/7027)** | **2.66% (134/5024)** | **2.47% (36/1452)** | **2.85% (191/6696)** |
+| B | 2.81% (198/7027) | 2.66% (134/5024) | 2.47% (36/1452) | 2.85% (191/6696) |
+| **C1 (current)** | **6.31% (444/7027)** | **6.32% (318/5024)** | **3.99% (58/1452)** | **6.51% (436/6696)** |
 
 The denominator (~7027 statements after exclusions) is smaller than the raw
 ~22k LOC estimate because v8 counts executable statements, not lines, and the
@@ -203,7 +228,6 @@ tests prove it does.
   only after the lucide-react types are fixed and `tsc --noEmit` is green.
 
 ### Verification footgun: `incremental: true` + `tsconfig.tsbuildinfo`
-
 `tsconfig.json` has `"incremental": true`, so `tsc --noEmit` writes and reuses a
 `tsconfig.tsbuildinfo` cache. A stale cache can report **bogus "exit 0"** for
 errors that a fresh check would surface — which is exactly how the lucide-react
@@ -214,3 +238,23 @@ breakage above was missed during local verification in earlier batches while CI
 running `npm run typecheck`, or run `npx tsc --noEmit --incremental false`. The
 file is gitignored (`*.tsbuildinfo`) so it never reaches CI, but it pollutes
 local verification. Never report "typecheck passes" based on an incremental run.
+
+### Codebase observation: `get_user_subscription` RPC shape inconsistency
+
+ surfaced while writing Batch C tests. The same Supabase RPC is consumed two
+different ways:
+
+- `lib/allowance/service.ts:56` (`getUserPlanId`): `data?.plan_id ?? 'free'` —
+  reads it as a **single object**.
+- `app/api/subscription/*/route.ts`: `Array.isArray(data) ? data[0] : data` —
+  handles **either** shape.
+
+If the real `get_user_subscription` Postgres function returns an array (SETOF),
+then `data?.plan_id` is `undefined` on an array, so `getUserPlanId` always
+returns `'free'` — meaning every user would be billed at the free allowance
+regardless of their actual plan. This is either (a) masked because the RPC
+returns a single row in production, or (b) a latent billing bug. Worth
+verifying the RPC's return type against the database definition. Tests in
+`allowance/service.test.ts` mock the rpc as a single object to match what
+`getUserPlanId` expects; route tests mock it as an array to match what the
+routes expect.
