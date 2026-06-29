@@ -32,8 +32,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient, SupabaseClient } from '@/lib/supabase-client.server';
 import { Webhook } from "standardwebhooks";
-import { getPlanIdFromDodoProductId, PLAN_ALLOWANCES } from "@/lib/subscription-utils.server";
+import { PLAN_ALLOWANCES } from "@/lib/subscription-utils.server";
 import { getCurrentUtcDailyAllowanceWindow } from "@/lib/allowance";
+import { buildSubscriptionData } from "./helpers";
 
 // =============================================================================
 // TIMESTAMP DEDUPLICATION (OPTIONAL)
@@ -84,18 +85,6 @@ async function hasMatchingDodoWebhookTimestamp(
 // It should be stored in your .env file as DODO_WEBHOOK_SECRET
 const DODO_WEBHOOK_SECRET = process.env.DODO_WEBHOOK_SECRET;
 
-// Helper function to map Dodo product ID to internal plan ID
-function getPlanIdFromProductId(productId: string): string | null {
-  return getPlanIdFromDodoProductId(productId);
-}
-
-// Helper to add days to a date (handles month/year rollovers automatically)
-function addDays(date: string, days: number): string {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result.toISOString();
-}
-
 /**
  * Updates subscription only (no allowance changes)
  * Uses status from the payload data
@@ -119,11 +108,6 @@ async function updateSubscription(
   },
   dodoEventTimestamp?: string // Optional: only used for deduplication when provided
 ) {
-  const planId = getPlanIdFromProductId(productId);
-  if (!planId) {
-    throw new Error(`Unknown product_id: ${productId}. Not mapped to a plan.`);
-  }
-
   // Fetch existing subscription to merge metadata (avoid overwriting)
   const { data: existingSubscription } = await supabase
     .from('user_subscriptions')
@@ -133,29 +117,15 @@ async function updateSubscription(
 
   const existingMetadata = existingSubscription?.metadata || {};
 
-  const subscriptionData = {
-    clerk_user_id: clerkUserId,
-    dodo_subscription_id: subscriptionId,
-    status: data.status, // Use status from payload
-    plan_id: planId,
-    billing_period: data.payment_frequency_interval?.toLowerCase(),
-    current_period_start: data.created_at,
-    current_period_end: data.next_billing_date,
-    trial_start: data.trial_period_days && data.trial_period_days > 0 ? data.created_at : null,
-    trial_end: data.trial_period_days && data.trial_period_days > 0
-      ? addDays(data.created_at, data.trial_period_days)
-      : null,
-    amount: data.recurring_pre_tax_amount,
-    currency: data.currency,
-    dodo_customer_id: data.customer?.customer_id,
-    canceled_at: data.canceled_at || null,
-    metadata: {
-      ...existingMetadata, // Preserve existing metadata fields
-      product_id: productId,
-      cancel_at_next_billing_date: data.cancel_at_next_billing_date,
-      ...(dodoEventTimestamp && { provider_updated_at: dodoEventTimestamp }), // Only add if provided
-    },
-  };
+  // Pure: resolve plan id (throws on unknown product) + build the upsert row.
+  const { subscriptionData, planId } = buildSubscriptionData({
+    clerkUserId,
+    subscriptionId,
+    productId,
+    existingMetadata,
+    data,
+    dodoEventTimestamp,
+  });
 
   const { error: subError } = await supabase
     .from('user_subscriptions')
