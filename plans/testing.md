@@ -154,8 +154,8 @@ every batch boundary.
 | **C1. Billing infra + allowance + subscription routes** | Mock infrastructure (`src/test/mocks/`: supabase chain, clerk, ratelimit, dodo, env), `subscription-utils.server` constants, `allowance/{service,tool-charging,token-usage-log}`, 5 `api/subscription/*` routes | 95 (302 total) | ✅ done |
 | **C2. Dodo webhook** | `app/api/webhooks/dodo` + `buildSubscriptionData` extraction (separate veto-able diff) + signature/idempotency/state-machine tests + 3 deliberate-quirk regression pins | 43 (345 total) | ✅ done |
 | **D1. Chat supporting libs** | `validate-chat-messages`, `conversation-history/chat-db-service` (+ export `roleToSenderRole`), `chat-history/{conversations,folders,temporary}` | 74 (419 total) | ✅ done |
-| **D2. Chat route pure-helper extraction** | Extract candidates #1–#6 from `app/api/chat/route.ts` (veto-able refactor) | — | pending |
-| **D3. Chat route handler tests** | Mock `streamText`; cover short-circuits (401/429/400/402/403/404) + the now-extracted metering helpers | ~50–70 | pending |
+| **D2. Chat route pure-helper extraction** | Extract candidates #1–#6 from `app/api/chat/route.ts` (veto-able refactor) | — (refactor) | ✅ done |
+| **D3. Chat route tests** | Pure-helper unit tests (42) + route short-circuits + shallow happy path (13) | 55 (480 total) | ✅ done |
 | **E. Storage & sharing** | `lib/storage/*`, `lib/sharing/share-service`, `app/api/share/*`, `app/api/upload` | ~50–70 | pending |
 | **F. Remaining API routes** | ~25 CRUD routes (conversations, folders, profile, feedback, memory, onboarding) | ~80–100 | pending |
 | **G. Feature components** | `chat-input`, `sidebar`, message renderers, dialogs — via RTL, no snapshots | ~60–90 | pending |
