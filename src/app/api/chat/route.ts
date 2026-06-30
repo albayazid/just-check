@@ -1,5 +1,4 @@
 ﻿import { streamText, convertToModelMessages, UIMessage, consumeStream } from 'ai';
-import { countTokens } from 'gpt-tokenizer';
 import { getTimeTool, getWeatherTool, webSearchTool, viewWebsiteTool, manageMemoryTool } from '@/lib/tools';
 import { chatRatelimit } from '@/lib/ratelimit';
 import { NextResponse } from 'next/server';
@@ -20,6 +19,13 @@ import { resolveModelRoute, getLanguageModel } from '@/lib/models';
 import { logMessageTokenUsage } from '@/lib/allowance';
 import { v4 as uuidv4 } from 'uuid';
 import { auth } from '@clerk/nextjs/server';
+import {
+  detectRoutingContext,
+  restoreAccumulators,
+  estimateAbortedStep,
+  resolveCurrentRequestTokens,
+  assembleServerMetadata,
+} from './helpers';
 import { getRemainingAllowance, deductAllowance, getModelPricing, calculateCost } from '@/lib/allowance';
 import { buildSystemPrompt } from '@/lib/system-prompt';
 import { DEFAULT_AI_CUSTOMIZATION_SETTINGS, type AICustomizationSettings } from '@/types/settings';
@@ -148,13 +154,7 @@ export async function POST(req: Request) {
     }
 
     // Calculate Routing Context
-    const hasImages = messages.some((m: UIMessage) =>
-      m.parts.some(p => p.type === 'file' && p.mediaType.startsWith('image/'))
-    );
-
-    const hasFiles = messages.some((m: UIMessage) =>
-      m.parts.some(p => p.type === 'file')
-    );
+    const { hasImages, hasFiles } = detectRoutingContext(messages);
 
     // Resolve the UI Model to a technical route using the context
     const route = resolveModelRoute(UIModelId, { hasImages });
@@ -231,38 +231,19 @@ export async function POST(req: Request) {
     // In case of client side tool calls the stream completely end after a client side tool call. Cause the client can either send or not the tool result. That's why this safety mechanism. But this has some cons. The client side tool calls result comes as a new request.
     // Beside as the stream completely end on a client side tool call, the sdk literally call backs the onFinish. Cause the stream completely ended, unlike a server sdie tool call. Now after getting the client side result back (if client give result back), a new stream starts, as a result the new streams onFinish doesn't account for privious ofFinish usages, rather a fresh count till the stream started.
     // Initialize Metadata Accumulators
-    let accumulatedStepCount = 0;
-    let accumulatedToolCallsCount = 0;
-    // We use a Set to track unique tool names across the entire response (previous + current)
-    const accumulatedToolsCalled = new Set<string>();
-
-    let accumulatedUsage: TotalUsage = {
-      totalUsedTokens: 0,
-      totalInputTokens: 0,
-      totalOutputTokens: 0,
-      inputTokenDetails: undefined,
-      outputTokenDetails: undefined,
-    };
-
-    let previousStepData: StepData[] = [];
-
-    // If this is NOT a new turn (e.g. client side tool result continuation, confirmation (confirmation not implemented yet)), try to restore previous state.
-    if (!isNewUserTurn && continuationMessage && continuationMessage.sender_type === 'assistant') {
-      const prevMeta = continuationMessage.metadata as any as AssistantResponseMetadata | null;
-      if (prevMeta && prevMeta.totalUsage) {
-        accumulatedStepCount = prevMeta.stepCount || 0;
-        accumulatedToolCallsCount = prevMeta.toolCallsCount || 0;
-        if (prevMeta.toolsCalled) {
-          prevMeta.toolsCalled.forEach(t => accumulatedToolsCalled.add(t));
-        }
-        if (prevMeta.totalUsage) {
-          accumulatedUsage = { ...prevMeta.totalUsage };
-        }
-        if (prevMeta.step_data) {
-          previousStepData = [...prevMeta.step_data];
-        }
-      }
-    }
+    // If this is NOT a new turn (e.g. client side tool result continuation),
+    // restore accumulators from the prior assistant message's metadata.
+    const continuationPrevMeta = (!isNewUserTurn && continuationMessage && continuationMessage.sender_type === 'assistant')
+      ? (continuationMessage.metadata as any as AssistantResponseMetadata | null)
+      : null;
+    const {
+      stepCount: accumulatedStepCount,
+      toolCallsCount: accumulatedToolCallsCount,
+      // Mutable Set — onStepFinish adds tool names during streaming.
+      toolsCalled: accumulatedToolsCalled,
+      usage: accumulatedUsage,
+      previousStepData,
+    } = restoreAccumulators(continuationPrevMeta);
 
     const currentStepData: StepData[] = [];
 
@@ -481,79 +462,32 @@ export async function POST(req: Request) {
         // Account for the step that was running when abort happened
         const hasRunningStep = isAborted && stepsStarted > currentStepData.length;
         if (hasRunningStep) {
-          const estimatedOutputTokens = Math.ceil(countTokens(runningStepOutputText) * 1.3);
-          const inputText = systemPrompt + stepInputMessages
-            .map((m: any) => {
-              if (typeof m.content === 'string') return m.content;
-              if (Array.isArray(m.content)) return m.content.map((p: any) => p.text || '').join('');
-              return '';
-            })
-            .join('');
-          const estimatedInputTokens = Math.ceil(countTokens(inputText) * 1.3);
-          currentStepData.push({
-            timestamp: new Date().toISOString(),
-            finishReason: 'abort',
-            usage: {
-              totalTokens: estimatedInputTokens + estimatedOutputTokens,
-              inputTokens: estimatedInputTokens,
-              outputTokens: estimatedOutputTokens,
-            },
-            toolCallsCount: 0,
-            warnings: [],
-            providerMetadata: {},
-          });
+          currentStepData.push(
+            estimateAbortedStep({ runningStepOutputText, systemPrompt, stepInputMessages }),
+          );
         }
 
         // Use real usage from streamOnFinishUsage when available,
         // otherwise sum from currentStepData (covers abort scenarios where
         // streamText's onFinish fires with null usage)
-        const currentRequestTokens = streamOnFinishUsage?.inputTokens != null
-          ? streamOnFinishUsage
-          : currentStepData.length > 0
-            ? {
-                totalTokens: currentStepData.reduce((sum, s) => sum + (s.usage.totalTokens || 0), 0),
-                inputTokens: currentStepData.reduce((sum, s) => sum + (s.usage.inputTokens || 0), 0),
-                outputTokens: currentStepData.reduce((sum, s) => sum + (s.usage.outputTokens || 0), 0),
-              }
-            : undefined;
+        const currentRequestTokens = resolveCurrentRequestTokens(streamOnFinishUsage, currentStepData);
 
-        const serverMetadata: AssistantResponseMetadata = {
-          // Client fields (will be merged from assistantMessage.metadata)
-          model_data: { UIModelId, internalModelId, provider },
-          mode: conversationMode,
-          hasAttachments: hasFiles,
-          finishReason: isAborted ? 'abort' : (finishReason || 'unknown'),
-
-          // Server-only fields (accumulated during streaming)
-          totalUsage: {
-            totalUsedTokens: accumulatedUsage.totalUsedTokens + (currentRequestTokens?.totalTokens || 0),
-            totalInputTokens: accumulatedUsage.totalInputTokens + (currentRequestTokens?.inputTokens || 0),
-            totalOutputTokens: accumulatedUsage.totalOutputTokens + (currentRequestTokens?.outputTokens || 0),
-            inputTokenDetails: (() => {
-              const current = currentRequestTokens?.inputTokenDetails;
-              const accumulated = accumulatedUsage.inputTokenDetails;
-              if (!current && !accumulated) return undefined;
-              return {
-                noCacheTokens: (accumulated?.noCacheTokens || 0) + (current?.noCacheTokens || 0),
-                cacheReadTokens: (accumulated?.cacheReadTokens || 0) + (current?.cacheReadTokens || 0),
-                cacheWriteTokens: (accumulated?.cacheWriteTokens || 0) + (current?.cacheWriteTokens || 0),
-              };
-            })(),
-            outputTokenDetails: (() => {
-              const current = currentRequestTokens?.outputTokenDetails;
-              const accumulated = accumulatedUsage.outputTokenDetails;
-              if (!current && !accumulated) return undefined;
-              return {
-                textTokens: (accumulated?.textTokens || 0) + (current?.textTokens || 0),
-                reasoningTokens: (accumulated?.reasoningTokens || 0) + (current?.reasoningTokens || 0),
-              };
-            })(),
-          },
-          stepCount: accumulatedStepCount + currentStepData.length,
-          toolCallsCount: accumulatedToolCallsCount + currentStepData.reduce((acc, step) => acc + step.toolCallsCount, 0),
-          toolsCalled: Array.from(accumulatedToolsCalled),
-          step_data: [...previousStepData, ...currentStepData],
-        };
+        const serverMetadata: AssistantResponseMetadata = assembleServerMetadata({
+          UIModelId,
+          internalModelId,
+          provider,
+          conversationMode,
+          hasFiles,
+          isAborted,
+          finishReason,
+          accumulatedUsage,
+          accumulatedStepCount,
+          accumulatedToolCallsCount,
+          accumulatedToolsCalled,
+          currentRequestTokens,
+          previousStepData,
+          currentStepData,
+        });
 
         // Merge client metadata (from streaming) with server metadata. (defensive)
         // Cause server metadata already has all the fields needed.
