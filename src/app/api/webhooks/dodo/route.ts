@@ -34,7 +34,7 @@ import { getSupabaseAdminClient, SupabaseClient } from '@/lib/supabase-client.se
 import { Webhook } from "standardwebhooks";
 import { PLAN_ALLOWANCES } from "@/lib/subscription-utils.server";
 import { getCurrentUtcDailyAllowanceWindow } from "@/lib/allowance";
-import { buildSubscriptionData, type DodoSubscriptionEventData } from "./helpers";
+import { buildSubscriptionData, getPlanIdFromProductId, type DodoSubscriptionEventData } from "./helpers";
 
 // =============================================================================
 // TIMESTAMP DEDUPLICATION (OPTIONAL)
@@ -97,6 +97,11 @@ async function updateSubscription(
   data: DodoSubscriptionEventData,
   dodoEventTimestamp?: string // Optional: only used for deduplication when provided
 ) {
+  const planId = getPlanIdFromProductId(productId);
+  if (!planId) {
+    throw new Error(`Unknown product_id: ${productId}. Not mapped to a plan.`);
+  }
+
   // Fetch existing subscription to merge metadata (avoid overwriting)
   const { data: existingSubscription } = await supabase
     .from('user_subscriptions')
@@ -106,11 +111,11 @@ async function updateSubscription(
 
   const existingMetadata = existingSubscription?.metadata || {};
 
-  // Pure: resolve plan id (throws on unknown product) + build the upsert row.
-  const { subscriptionData, planId } = buildSubscriptionData({
+  const subscriptionData = buildSubscriptionData({
     clerkUserId,
     subscriptionId,
     productId,
+    planId,
     existingMetadata,
     data,
     dodoEventTimestamp,

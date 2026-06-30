@@ -75,9 +75,8 @@ describe("buildSubscriptionData", () => {
     return buildSubscriptionData({
       clerkUserId: "user_1",
       subscriptionId: "dodo_sub_1",
-      // productId is the DODO product id (what Dodo sends), not the internal
-      // plan id. "dodo_plus_test" is the env-stubbed Dodo id that maps to PLUS_MONTHLY.
       productId: "dodo_plus_test",
+      planId: PRODUCT_IDS.PLUS_MONTHLY,
       existingMetadata: {},
       data: BASE_DATA,
       dodoEventTimestamp: undefined,
@@ -85,22 +84,16 @@ describe("buildSubscriptionData", () => {
     });
   }
 
-  describe("plan resolution", () => {
-    it("resolves the planId from the Dodo product id", () => {
-      const { planId } = build({ productId: "dodo_plus_test" });
-      expect(planId).toBe(PRODUCT_IDS.PLUS_MONTHLY);
-    });
-
-    it("throws when the product id is not mapped to a plan", () => {
-      expect(() => build({ productId: "dodo_unknown" })).toThrowError(
-        /Unknown product_id: dodo_unknown/,
-      );
+  describe("plan id passthrough", () => {
+    it("writes the supplied planId into the row's plan_id field", () => {
+      const row = build({ planId: PRODUCT_IDS.PRO_MONTHLY });
+      expect(row.plan_id).toBe(PRODUCT_IDS.PRO_MONTHLY);
     });
   });
 
   describe("field mappings", () => {
     it("maps every Dodo field to the user_subscriptions row", () => {
-      const { subscriptionData: row } = build();
+      const row = build();
 
       expect(row).toMatchObject({
         clerk_user_id: "user_1",
@@ -116,14 +109,14 @@ describe("buildSubscriptionData", () => {
     });
 
     it("lowercases the billing_period from payment_frequency_interval", () => {
-      const { subscriptionData: row } = build({
+      const row = build({
         data: { ...BASE_DATA, payment_frequency_interval: "YEARLY" },
       });
       expect(row.billing_period).toBe("yearly");
     });
 
     it("leaves billing_period undefined when payment_frequency_interval is absent", () => {
-      const { subscriptionData: row } = build({
+      const row = build({
         data: { ...BASE_DATA, payment_frequency_interval: undefined },
       });
       expect(row.billing_period).toBeUndefined();
@@ -131,13 +124,13 @@ describe("buildSubscriptionData", () => {
 
     it("passes canceled_at through, defaulting falsy to null", () => {
       expect(build({ data: { ...BASE_DATA, canceled_at: "2026-06-20T00:00:00Z" } })
-        .subscriptionData.canceled_at).toBe("2026-06-20T00:00:00Z");
+        .canceled_at).toBe("2026-06-20T00:00:00Z");
       expect(build({ data: { ...BASE_DATA, canceled_at: undefined } })
-        .subscriptionData.canceled_at).toBeNull();
+        .canceled_at).toBeNull();
     });
 
     it("extracts dodo_customer_id from data.customer.customer_id", () => {
-      const { subscriptionData: row } = build({
+      const row = build({
         data: { ...BASE_DATA, customer: { customer_id: "cust_abc" } },
       });
       expect(row.dodo_customer_id).toBe("cust_abc");
@@ -146,7 +139,7 @@ describe("buildSubscriptionData", () => {
 
   describe("trial period math", () => {
     it("sets trial_start/trial_end when trial_period_days > 0", () => {
-      const { subscriptionData: row } = build({
+      const row = build({
         data: { ...BASE_DATA, trial_period_days: 14 },
       });
       expect(row.trial_start).toBe("2026-06-01T00:00:00Z");
@@ -155,7 +148,7 @@ describe("buildSubscriptionData", () => {
     });
 
     it("nulls trial_start/trial_end when trial_period_days is 0", () => {
-      const { subscriptionData: row } = build({
+      const row = build({
         data: { ...BASE_DATA, trial_period_days: 0 },
       });
       expect(row.trial_start).toBeNull();
@@ -163,7 +156,7 @@ describe("buildSubscriptionData", () => {
     });
 
     it("nulls trial_start/trial_end when trial_period_days is undefined", () => {
-      const { subscriptionData: row } = build({
+      const row = build({
         data: { ...BASE_DATA, trial_period_days: undefined },
       });
       expect(row.trial_start).toBeNull();
@@ -173,7 +166,7 @@ describe("buildSubscriptionData", () => {
 
   describe("metadata merge", () => {
     it("stamps product_id and cancel_at_next_billing_date onto the metadata", () => {
-      const { subscriptionData: row } = build({
+      const row = build({
         data: { ...BASE_DATA, cancel_at_next_billing_date: true },
       });
       // metadata.product_id stores the INPUT Dodo product id, not the internal plan id.
@@ -184,7 +177,7 @@ describe("buildSubscriptionData", () => {
     });
 
     it("preserves existing metadata fields (does not overwrite)", () => {
-      const { subscriptionData: row } = build({
+      const row = build({
         existingMetadata: { old_field: "keep_me", product_id: "old_value" },
       });
       // existing old_field survives; product_id is overwritten by the new Dodo id.
@@ -193,19 +186,19 @@ describe("buildSubscriptionData", () => {
     });
 
     it("does NOT add provider_updated_at when dodoEventTimestamp is absent", () => {
-      const { subscriptionData: row } = build({ dodoEventTimestamp: undefined });
+      const row = build({ dodoEventTimestamp: undefined });
       expect(row.metadata).not.toHaveProperty("provider_updated_at");
     });
 
     it("adds provider_updated_at only when dodoEventTimestamp is provided", () => {
-      const { subscriptionData: row } = build({
+      const row = build({
         dodoEventTimestamp: "2026-06-28T00:00:00Z",
       });
       expect(row.metadata.provider_updated_at).toBe("2026-06-28T00:00:00Z");
     });
 
     it("treats an empty-string timestamp as absent (conditional uses truthiness)", () => {
-      const { subscriptionData: row } = build({ dodoEventTimestamp: "" });
+      const row = build({ dodoEventTimestamp: "" });
       expect(row.metadata).not.toHaveProperty("provider_updated_at");
     });
   });

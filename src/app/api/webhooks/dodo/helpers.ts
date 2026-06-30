@@ -45,9 +45,10 @@ export interface BuildSubscriptionDataArgs {
   clerkUserId: string;
   subscriptionId: string;
   productId: string;
+  planId: string;
   existingMetadata: Record<string, unknown>;
   data: DodoSubscriptionEventData;
-  /** Optional Dodo event timestamp — only persisted to metadata when provided. */
+  /** Only persisted to metadata when provided. */
   dodoEventTimestamp?: string;
 }
 
@@ -69,31 +70,18 @@ export function addDays(date: string, days: number): string {
   return result.toISOString();
 }
 
-/**
- * Builds the `user_subscriptions` row to upsert for a subscription.* event,
- * and resolves the internal plan id.
- *
- * Pure given its inputs — the only thing that was previously entangled with
- * I/O was fetching `existingMetadata`, which is now passed in by the caller.
- *
- * @throws if `productId` does not map to a known plan.
- */
 export function buildSubscriptionData({
   clerkUserId,
   subscriptionId,
   productId,
+  planId,
   existingMetadata,
   data,
   dodoEventTimestamp,
-}: BuildSubscriptionDataArgs): { subscriptionData: SubscriptionRow; planId: string } {
-  const planId = getPlanIdFromProductId(productId);
-  if (!planId) {
-    throw new Error(`Unknown product_id: ${productId}. Not mapped to a plan.`);
-  }
-
+}: BuildSubscriptionDataArgs): SubscriptionRow {
   const hasTrial = data.trial_period_days && data.trial_period_days > 0;
 
-  const subscriptionData: SubscriptionRow = {
+  return {
     clerk_user_id: clerkUserId,
     dodo_subscription_id: subscriptionId,
     status: data.status,
@@ -115,6 +103,4 @@ export function buildSubscriptionData({
       ...(dodoEventTimestamp && { provider_updated_at: dodoEventTimestamp }),
     },
   };
-
-  return { subscriptionData, planId };
 }
