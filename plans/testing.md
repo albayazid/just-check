@@ -153,7 +153,9 @@ every batch boundary.
 | **B. Pure logic** | All pure lib code: `age-validation`, `uuid-utils`, `allowance/{calculations,pricing}`, `models/router`, `modes`, `system-prompt/builder`, `web-search/{time-range,favicon-utils}`, `storage/attachment-url-utils`, `subscription-utils`, `password-validation` | 171 (207 total) | ✅ done |
 | **C1. Billing infra + allowance + subscription routes** | Mock infrastructure (`src/test/mocks/`: supabase chain, clerk, ratelimit, dodo, env), `subscription-utils.server` constants, `allowance/{service,tool-charging,token-usage-log}`, 5 `api/subscription/*` routes | 95 (302 total) | ✅ done |
 | **C2. Dodo webhook** | `app/api/webhooks/dodo` + `buildSubscriptionData` extraction (separate veto-able diff) + signature/idempotency/state-machine tests + 3 deliberate-quirk regression pins | 43 (345 total) | ✅ done |
-| **D. Chat core** | `app/api/chat/route.ts` (+ helper extraction), `lib/validation/validate-chat-messages`, `lib/conversation-history/*`, `lib/chat-history/*` | ~60–80 | pending |
+| **D1. Chat supporting libs** | `validate-chat-messages`, `conversation-history/chat-db-service` (+ export `roleToSenderRole`), `chat-history/{conversations,folders,temporary}` | 74 (419 total) | ✅ done |
+| **D2. Chat route pure-helper extraction** | Extract candidates #1–#6 from `app/api/chat/route.ts` (veto-able refactor) | — | pending |
+| **D3. Chat route handler tests** | Mock `streamText`; cover short-circuits (401/429/400/402/403/404) + the now-extracted metering helpers | ~50–70 | pending |
 | **E. Storage & sharing** | `lib/storage/*`, `lib/sharing/share-service`, `app/api/share/*`, `app/api/upload` | ~50–70 | pending |
 | **F. Remaining API routes** | ~25 CRUD routes (conversations, folders, profile, feedback, memory, onboarding) | ~80–100 | pending |
 | **G. Feature components** | `chat-input`, `sidebar`, message renderers, dialogs — via RTL, no snapshots | ~60–90 | pending |
@@ -171,7 +173,8 @@ happened to import. Target: `lines 80 / functions 75 / branches 70 / statements 
 | A | ~0.5% | ~0.5% | ~0.7% | ~0.5% |
 | B | 2.81% (198/7027) | 2.66% (134/5024) | 2.47% (36/1452) | 2.85% (191/6696) |
 | C1 | 6.31% (444/7027) | 6.32% (318/5024) | 3.99% (58/1452) | 6.51% (436/6696) |
-| **C2 (current)** | **8.29% (583/7030)** | **7.52% (378/5022)** | **4.54% (66/1453)** | **8.58% (575/6699)** |
+| C2 | 8.29% (583/7030) | 7.52% (378/5022) | 4.54% (66/1453) | 8.58% (575/6699) |
+| **D1 (current)** | **11.1% (781/7030)** | **9.93% (499/5022)** | **6.33% (92/1453)** | **11.43% (766/6699)** |
 
 The denominator (~7027 statements after exclusions) is smaller than the raw
 ~22k LOC estimate because v8 counts executable statements, not lines, and the

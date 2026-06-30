@@ -34,7 +34,7 @@ import { vi } from "vitest";
  *   });
  */
 
-export type SupabaseResult = { data: unknown; error: unknown };
+export type SupabaseResult = { data?: unknown; error?: unknown; count?: number };
 
 export interface SupabaseMockConfig {
   /** Per-RPC-name return value. Default `{ data: null, error: null }`. */
@@ -90,7 +90,10 @@ export function createMockSupabaseClient(config: SupabaseMockConfig = {}) {
     chain.select = vi.fn(selfReturning);
     chain.eq = vi.fn(selfReturning);
     chain.neq = vi.fn(selfReturning);
+    chain.is = vi.fn(selfReturning);
+    chain.not = vi.fn(selfReturning);
     chain.in = vi.fn(selfReturning);
+    chain.or = vi.fn(selfReturning);
     chain.order = vi.fn(selfReturning);
     chain.range = vi.fn(selfReturning);
     chain.limit = vi.fn(selfReturning);

@@ -25,7 +25,7 @@ import type {
  * @returns The corresponding SenderRole ('user' or 'assistant')
  * @throws Error if role is 'system' or invalid
  */
-function roleToSenderRole(role: UIMessage['role']): SenderRole {
+export function roleToSenderRole(role: UIMessage['role']): SenderRole {
   switch (role) {
     case 'user':
       return 'user';
