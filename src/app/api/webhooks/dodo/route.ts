@@ -34,7 +34,7 @@ import { getSupabaseAdminClient, SupabaseClient } from '@/lib/supabase-client.se
 import { Webhook } from "standardwebhooks";
 import { PLAN_ALLOWANCES } from "@/lib/subscription-utils.server";
 import { getCurrentUtcDailyAllowanceWindow } from "@/lib/allowance";
-import { buildSubscriptionData } from "./helpers";
+import { buildSubscriptionData, type DodoSubscriptionEventData } from "./helpers";
 
 // =============================================================================
 // TIMESTAMP DEDUPLICATION (OPTIONAL)
@@ -94,18 +94,7 @@ async function updateSubscription(
   clerkUserId: string,
   productId: string,
   subscriptionId: string,
-  data: {
-    status: string; // From payload - could be 'active', 'on_hold', 'cancelled', etc.
-    created_at: string;
-    next_billing_date: string;
-    payment_frequency_interval?: string;
-    trial_period_days?: number;
-    recurring_pre_tax_amount: number;
-    currency: string;
-    cancel_at_next_billing_date?: boolean;
-    customer?: { customer_id?: string };
-    canceled_at?: string;
-  },
+  data: DodoSubscriptionEventData,
   dodoEventTimestamp?: string // Optional: only used for deduplication when provided
 ) {
   // Fetch existing subscription to merge metadata (avoid overwriting)
@@ -147,18 +136,7 @@ async function upsertSubscriptionAndResetAllowance(
   clerkUserId: string,
   productId: string,
   subscriptionId: string,
-  data: {
-    status: string; // From payload
-    created_at: string;
-    next_billing_date: string;
-    payment_frequency_interval?: string;
-    trial_period_days?: number;
-    recurring_pre_tax_amount: number;
-    currency: string;
-    cancel_at_next_billing_date?: boolean;
-    customer?: { customer_id?: string };
-    canceled_at?: string;
-  },
+  data: DodoSubscriptionEventData,
   dodoEventTimestamp?: string // Optional: only used for deduplication when provided
 ) {
   const { planId } = await updateSubscription(

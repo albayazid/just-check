@@ -1,16 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-// Control the structural-validation pass + the supported-types list. The
-// attachment:// URL check (isAttachmentUrl) runs real — it's pure and already
-// unit-tested in storage/attachment-url-utils.test.ts.
+// Control the structural-validation pass. The attachment:// URL check
+// (isAttachmentUrl) and the real SUPPORTED_FILE_TYPES list both run real —
+// avoids the tautology of asserting against a mocked list (review N7).
 vi.mock("ai", () => ({
   safeValidateUIMessages: vi.fn(),
 }));
-vi.mock("@/lib/storage/file-validation", () => ({
-  SUPPORTED_FILE_TYPES: ["image/jpeg", "image/png", "image/webp", "text/plain", "application/pdf"],
-}));
 
 import { safeValidateUIMessages } from "ai";
+import { SUPPORTED_FILE_TYPES } from "@/lib/storage/file-validation";
 import { validateChatMessages } from "./validate-chat-messages";
 
 const UUID = "550e8400-e29b-41d4-a716-446655440000";
@@ -114,7 +112,7 @@ describe("validateChatMessages — application constraints (pass 2)", () => {
     });
 
     it("accepts each supported media type", async () => {
-      for (const mt of ["image/jpeg", "image/png", "image/webp", "text/plain", "application/pdf"]) {
+      for (const mt of SUPPORTED_FILE_TYPES) {
         mockStructuralSuccess([{ role: "user", parts: [filePart(VALID_ATTACHMENT_URL, mt)] }]);
         const result = await validateChatMessages([]);
         expect(result.success, `mediaType ${mt}`).toBe(true);
