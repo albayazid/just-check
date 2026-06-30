@@ -243,22 +243,19 @@ running `npm run typecheck`, or run `npx tsc --noEmit --incremental false`. The
 file is gitignored (`*.tsbuildinfo`) so it never reaches CI, but it pollutes
 local verification. Never report "typecheck passes" based on an incremental run.
 
-### Codebase observation: `get_user_subscription` RPC shape inconsistency
+### `get_user_subscription` RPC shape — RESOLVED on `main`
 
- surfaced while writing Batch C tests. The same Supabase RPC is consumed two
-different ways:
+This latent billing bug was **flagged here during Batch C** and **fixed upstream**
+in commit `b0d09d4` (`fix(allowance): correctly resolve paid plan in getUserPlanId`),
+which was rebased into this branch. The original code read `data?.plan_id` directly
+on the RPC result; because the RPC returns an **array**, `plan_id` was always
+`undefined` → every user was billed at the free allowance regardless of plan.
 
-- `lib/allowance/service.ts:56` (`getUserPlanId`): `data?.plan_id ?? 'free'` —
-  reads it as a **single object**.
-- `app/api/subscription/*/route.ts`: `Array.isArray(data) ? data[0] : data` —
-  handles **either** shape.
-
-If the real `get_user_subscription` Postgres function returns an array (SETOF),
-then `data?.plan_id` is `undefined` on an array, so `getUserPlanId` always
-returns `'free'` — meaning every user would be billed at the free allowance
-regardless of their actual plan. This is either (a) masked because the RPC
-returns a single row in production, or (b) a latent billing bug. Worth
-verifying the RPC's return type against the database definition. Tests in
-`allowance/service.test.ts` mock the rpc as a single object to match what
-`getUserPlanId` expects; route tests mock it as an array to match what the
-routes expect.
+The fix added `Array.isArray(data) ? data[0] : data` plus an explicit
+`if (error) throw error`. **Regression-pinned** in
+`src/lib/allowance/service.test.ts` under
+"getUserPlanId regression — upstream fix b0d09d4": the array-form tests would
+have returned the free allowance (4) pre-fix, and the error-throw test would
+have silently defaulted to 'free' pre-fix. Tests now mock the realistic array
+shape for the regression cases (the earlier single-object mocks are retained
+since the fix handles both shapes).

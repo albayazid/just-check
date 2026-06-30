@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   buildSystemPrompt,
   type BuildSystemPromptOptions,
@@ -12,6 +12,7 @@ import {
 // section starts with a distinctive header we can anchor on).
 const SECTIONS = {
   identity: "You are Lumy",
+  currentTime: "## Current Time",
   behavior: "## Behavior",
   modes: "## Modes",
   capabilities: "## Capabilities",
@@ -50,8 +51,9 @@ function expectSectionsInOrder(prompt: string, markers: string[]) {
 describe("buildSystemPrompt — always-present sections", () => {
   const prompt = build();
 
-  it("includes the identity, behavior, capabilities and tools sections", () => {
+  it("includes the identity, current-time, behavior, capabilities and tools sections", () => {
     expect(prompt).toContain(SECTIONS.identity);
+    expect(prompt).toContain(SECTIONS.currentTime);
     expect(prompt).toContain(SECTIONS.behavior);
     expect(prompt).toContain(SECTIONS.capabilities);
     expect(prompt).toContain(SECTIONS.tools);
@@ -72,11 +74,48 @@ describe("buildSystemPrompt — always-present sections", () => {
   });
 });
 
+describe("buildSystemPrompt — Current Time section", () => {
+  // The section reads `new Date()` internally and formats in UTC. Pin the clock
+  // so the formatted string is deterministic (TZ=UTC is set in vitest.config.ts).
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-28T14:30:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("always includes the Current Time section (unconditional)", () => {
+    expect(build()).toContain(SECTIONS.currentTime);
+  });
+
+  it("embeds the formatted current UTC date/time", () => {
+    const prompt = build();
+    // en-US long format, UTC, 24h. 2026-06-28 is a Sunday.
+    expect(prompt).toContain("Sunday, June 28, 2026");
+    expect(prompt).toContain("14:30");
+    expect(prompt).toContain("(UTC)");
+  });
+
+  it("instructs the model to treat the supplied time as authoritative", () => {
+    const prompt = build();
+    expect(prompt).toContain("authoritative current time");
+    expect(prompt).toMatch(/today|now|yesterday|tomorrow/);
+  });
+
+  it("updates the embedded time when the clock advances", () => {
+    expect(build()).toContain("14:30");
+    vi.setSystemTime(new Date("2026-06-28T15:45:00Z"));
+    const later = build();
+    expect(later).toContain("15:45");
+    expect(later).not.toContain("14:30");
+  });
+});
+
 describe("buildSystemPrompt — section ordering", () => {
-  it("lays out core sections in the documented order", () => {
+  it("lays out core sections in the documented order (Current Time after Identity)", () => {
     const prompt = build();
     expectSectionsInOrder(prompt, [
       SECTIONS.identity,
+      SECTIONS.currentTime,
       SECTIONS.behavior,
       SECTIONS.modes,
       SECTIONS.capabilities,

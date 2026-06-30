@@ -272,6 +272,70 @@ describe("getAllowanceStatus — paid user", () => {
   });
 });
 
+describe("getUserPlanId regression — upstream fix b0d09d4 (paid-plan resolution)", () => {
+  // The real `get_user_subscription` RPC returns an ARRAY. Before the fix,
+  // `getUserPlanId` read `data?.plan_id` directly on the array → undefined →
+  // every user was billed as 'free'. The fix added
+  // `Array.isArray(data) ? data[0] : data` plus an error throw. These tests
+  // pin the fixed behaviour; either would have failed pre-fix.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    vi.clearAllMocks();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("resolves the paid plan when the RPC returns an array (the original bug)", async () => {
+    installSupabase(
+      // Realistic shape: array with one subscription row.
+      { get_user_subscription: { data: [{ plan_id: "pro_monthly" }], error: null } },
+      { periodic_allowance: { data: null, error: pgError("PGRST116") } },
+    );
+
+    const status = await getAllowanceStatus("user_pro");
+
+    // Pre-fix this returned the free allowance (4) because the array's
+    // `.plan_id` was undefined → 'free'. Post-fix the plan resolves correctly
+    // and the paid no-row branch returns zero allowance.
+    expect(status.remainingAllowance).toBe(0);
+    expect(status.allotedAllowance).toBe(0);
+    // Crucially: the free-tier kill switch is NOT consulted for a paid user.
+    expect(isFreeTierEnabled).not.toHaveBeenCalled();
+  });
+
+  it("resolves the paid plan and applies the plan allowance when a row exists", async () => {
+    installSupabase(
+      { get_user_subscription: { data: [{ plan_id: "pro_monthly" }], error: null } },
+      {
+        periodic_allowance: {
+          data: {
+            remaining_allowance: 100,
+            alloted_allowance: 275,
+            period_start: "2026-06-28T00:00:00.000Z",
+            period_end: "2026-06-29T00:00:00.000Z",
+          },
+          error: null,
+        },
+      },
+    );
+
+    const status = await getAllowanceStatus("user_pro");
+    expect(status.remainingAllowance).toBe(100);
+    expect(status.allotedAllowance).toBe(275); // pro amount, not free (4)
+  });
+
+  it("throws when the plan-lookup RPC errors (new behaviour added by the fix)", async () => {
+    installSupabase(
+      { get_user_subscription: { data: null, error: pgError("XX", "rpc down") } },
+      {},
+    );
+
+    // Pre-fix the error was silently ignored and the user defaulted to 'free'.
+    // Post-fix the error propagates.
+    await expect(getAllowanceStatus("user_pro")).rejects.toThrowError(/rpc down/);
+  });
+});
+
 describe("getRemainingAllowance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
