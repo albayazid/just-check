@@ -47,6 +47,15 @@ export interface SupabaseMockConfig {
    * of which chain methods (`.select`/`.update`/`.upsert`/…) are used.
    */
   tables?: Record<string, SupabaseResult | SupabaseResult[]>;
+  /** Return values for `.storage().from(bucket)` operations. */
+  storage?: StorageMockConfig;
+}
+
+/** Config for the `.storage()` chain (upload / createSignedUrl / remove). */
+export interface StorageMockConfig {
+  upload?: SupabaseResult;
+  createSignedUrl?: SupabaseResult;
+  remove?: SupabaseResult;
 }
 
 const DEFAULT_RESULT: SupabaseResult = { data: null, error: null };
@@ -114,9 +123,19 @@ export function createMockSupabaseClient(config: SupabaseMockConfig = {}) {
     return chain;
   };
 
+  // Storage chain is created once (not per .from() call) so call history
+  // accumulates across calls — same pattern as the table-chain memoization.
+  const s = config.storage ?? {};
+  const storageChain = {
+    upload: vi.fn(() => s.upload ?? DEFAULT_RESULT),
+    createSignedUrl: vi.fn(() => s.createSignedUrl ?? DEFAULT_RESULT),
+    remove: vi.fn(() => s.remove ?? DEFAULT_RESULT),
+  };
+
   const client = {
     from: vi.fn((table: string) => createChain(table)),
     rpc: vi.fn((name: string) => rpcResults[name] ?? DEFAULT_RESULT),
+    storage: { from: vi.fn(() => storageChain) },
   };
 
   return client;
