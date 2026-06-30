@@ -53,8 +53,10 @@ function makeAllowanceStatus(input: AllowanceInput): AllowanceStatus {
 
 async function getUserPlanId(clerkUserId: string): Promise<string> {
   const supabase = getSupabase();
-  const { data } = await supabase.rpc('get_user_subscription', { p_clerk_user_id: clerkUserId });
-  return data?.plan_id ?? 'free';
+  const { data, error } = await supabase.rpc('get_user_subscription', { p_clerk_user_id: clerkUserId });
+  if (error) throw error;
+  const subscription = Array.isArray(data) ? data[0] : data;
+  return subscription?.plan_id ?? 'free';
 }
 
 /**
