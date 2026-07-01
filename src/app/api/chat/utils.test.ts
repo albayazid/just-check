@@ -9,7 +9,7 @@ import {
   mergeOutputTokenDetails,
   assembleServerMetadata,
   type AssembleServerMetadataArgs,
-} from "./helpers";
+} from "./utils";
 import type { StepData, TotalUsage } from "@/lib/conversation-history";
 import { buildAssistantResponseMetadata } from "@/test/factories";
 

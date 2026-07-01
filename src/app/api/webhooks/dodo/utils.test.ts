@@ -4,7 +4,7 @@ import {
   getPlanIdFromProductId,
   buildSubscriptionData,
   type DodoSubscriptionEventData,
-} from "./helpers";
+} from "./utils";
 import { stubDodoProductEnvs } from "@/test/mocks/env";
 import { PRODUCT_IDS } from "@/lib/subscription-utils";
 

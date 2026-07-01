@@ -34,7 +34,7 @@ import { getSupabaseAdminClient, SupabaseClient } from '@/lib/supabase-client.se
 import { Webhook } from "standardwebhooks";
 import { PLAN_ALLOWANCES } from "@/lib/subscription-utils.server";
 import { getCurrentUtcDailyAllowanceWindow } from "@/lib/allowance";
-import { buildSubscriptionData, getPlanIdFromProductId, type DodoSubscriptionEventData } from "./helpers";
+import { buildSubscriptionData, getPlanIdFromProductId, type DodoSubscriptionEventData } from "./utils";
 
 // =============================================================================
 // TIMESTAMP DEDUPLICATION (OPTIONAL)
