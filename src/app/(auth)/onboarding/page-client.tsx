@@ -29,10 +29,10 @@ interface FormErrors {
 function OnboardingContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { isLoaded, isSignedIn } = useAuth()
+  const { isLoaded, isSignedIn, getToken, sessionClaims } = useAuth()
   const { user } = useUser()
   const { signOut } = useClerk()
-  const isOnboarded = !!user?.publicMetadata?.profileComplete
+  const isOnboarded = !!((sessionClaims?.publicMetadata as { profileComplete?: boolean } | undefined)?.profileComplete)
 
   const [formData, setFormData] = useState<FormData>({
     fullName: '',
@@ -42,6 +42,7 @@ function OnboardingContent() {
 
   const [errors, setErrors] = useState<FormErrors>({})
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const deleteAccount = useMutation({
     mutationFn: async () => {
@@ -72,13 +73,13 @@ function OnboardingContent() {
     }
   }, [isLoaded, isSignedIn, router])
 
-  // Redirect once onboarding is complete (JWT has propagated)
+  // Redirect once onboarding is complete (user object confirms it)
   useEffect(() => {
     if (isOnboarded) {
       const returnUrl = searchParams.get('returnUrl') || '/'
-      window.location.href = returnUrl
+      router.push(returnUrl)
     }
-  }, [isOnboarded, searchParams])
+  }, [isOnboarded, searchParams, router])
 
   const handleInputChange = (field: keyof FormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -100,8 +101,22 @@ function OnboardingContent() {
       return response.json()
     },
     onSuccess: async () => {
-      // Force Clerk to re-fetch user data so publicMetadata.profileComplete updates
-      await user?.reload()
+      const returnUrl = searchParams.get('returnUrl') || '/'
+      try {
+        // Force a fresh JWT — updates sessionClaims (client) and __session cookie (middleware) atomically
+        await getToken({ skipCache: true })
+        // Redirect fires reactively via the useEffect when sessionClaims updates
+        //
+        // NOTE: user.reload() also works here — it refreshes BOTH the JWT AND the user object.
+        // We use getToken because isOnboarded reads from sessionClaims, and getToken is the lighter call
+        // (one token request vs. token + user fetch).
+      } catch {
+        // Fallback: hard navigation if token refresh fails
+        window.location.href = returnUrl
+      }
+    },
+    onError: () => {
+      setIsSubmitting(false)
     }
   })
 
@@ -141,6 +156,7 @@ function OnboardingContent() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (validateForm()) {
+      setIsSubmitting(true)
       completeOnboarding.mutate(formData)
     }
   }
@@ -219,7 +235,7 @@ function OnboardingContent() {
                 value={formData.fullName}
                 onChange={(e) => handleInputChange('fullName', e.target.value)}
                 className={errors.fullName ? 'border-destructive' : ''}
-                disabled={completeOnboarding.isPending}
+                disabled={isSubmitting}
               />
               {errors.fullName && (
                 <div className="flex items-center text-sm text-destructive">
@@ -241,7 +257,7 @@ function OnboardingContent() {
                 value={formData.nickname}
                 onChange={(e) => handleInputChange('nickname', e.target.value)}
                 className={errors.nickname ? 'border-destructive' : ''}
-                disabled={completeOnboarding.isPending}
+                disabled={isSubmitting}
               />
               {errors.nickname && (
                 <div className="flex items-center text-sm text-destructive">
@@ -266,7 +282,7 @@ function OnboardingContent() {
                 value={formData.dateOfBirth}
                 onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
                 className={errors.dateOfBirth ? 'border-destructive' : ''}
-                disabled={completeOnboarding.isPending}
+                disabled={isSubmitting}
               />
               {errors.dateOfBirth && (
                 <div className="flex items-center text-sm text-destructive">
@@ -289,10 +305,10 @@ function OnboardingContent() {
           <CardFooter className="flex items-center justify-end mt-4">
             <Button
               type="submit"
-              disabled={completeOnboarding.isPending}
+              disabled={isSubmitting}
               className="w-full bg-primary hover:bg-primary/90 disabled:opacity-50"
             >
-              {completeOnboarding.isPending ? (
+              {isSubmitting ? (
                 <div className="flex items-center">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
                   Saving Profile...

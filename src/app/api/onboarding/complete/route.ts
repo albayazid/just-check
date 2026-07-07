@@ -158,8 +158,6 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: true,
         message: 'Profile completed successfully',
-        requiresAuthTokenRefresh: true, // Flag for frontend to force token refresh
-        tokenRefreshDelay: 1500, // Recommended delay before redirect
         data: {
           fullName: fullName.trim(),
           nickname: sanitizedNickname,
