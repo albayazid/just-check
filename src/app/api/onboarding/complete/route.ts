@@ -139,7 +139,7 @@ export async function POST(req: Request) {
       }
 
       // Update Clerk metadata to mark profile as complete
-      await clerkClient.users.updateUser(userId, {
+      await clerkClient.users.updateUserMetadata(userId, {
         publicMetadata: {
           profileComplete: true
         }

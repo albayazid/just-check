@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
         // Configure _session template in Clerk Dashboard to include:
         // { "publicMetadata": { "profileComplete": "{{user.public_metadata.profileComplete}}" } }
         // Use centralized clerk client
-        await clerkClient.users.updateUser(clerkUserId, {
+        await clerkClient.users.updateUserMetadata(clerkUserId, {
           publicMetadata: {
             profileComplete: false  // Will be set to true when onboarding is complete
           }
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
         )
 
         // Update Clerk publicMetadata to match database state
-        await clerkClient.users.updateUser(clerkUserId, {
+        await clerkClient.users.updateUserMetadata(clerkUserId, {
           publicMetadata: {
             profileComplete: isComplete
           }
