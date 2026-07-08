@@ -2,8 +2,10 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useAuth, useUser, useClerk } from '@clerk/nextjs'
+import { useAuth, useUser, useClerk, useReverification } from '@clerk/nextjs'
+import { isClerkRuntimeError, isReverificationCancelledError } from '@clerk/nextjs/errors'
 import { useMutation } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -44,14 +46,29 @@ function OnboardingContent() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  const deleteWithReverification = useReverification(async () => {
+    if (!user) throw new Error('No user found')
+    await user.delete()
+  })
+
   const deleteAccount = useMutation({
     mutationFn: async () => {
-      if (!user) throw new Error('No user found')
-      await user.delete()
+      await deleteWithReverification()
     },
     onSuccess: () => {
       setShowDeleteDialog(false)
       router.push('/sign-in')
+    },
+    onError: (error) => {
+      if (isClerkRuntimeError(error) && isReverificationCancelledError(error)) {
+        toast.info('Verification cancelled', {
+          description: 'You need to verify your identity to delete your account. Please try again.',
+        })
+        return
+      }
+      toast.error('Failed to delete account', {
+        description: error instanceof Error ? error.message : 'Please try again or contact support.',
+      })
     },
   })
 

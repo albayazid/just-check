@@ -43,14 +43,29 @@ export default function AccountSettingsPageClient() {
   const uploadAvatar = useUploadAvatar();
 
   // Delete account mutation
+  const deleteWithReverification = useReverification(async () => {
+    if (!user) throw new Error("No user found");
+    await user.delete();
+  });
+
   const deleteAccount = useMutation({
     mutationFn: async () => {
-      if (!user) throw new Error("No user found");
-      await user.delete();
+      await deleteWithReverification();
     },
     onSuccess: () => {
       setShowDeleteDialog(false);
       router.push("/sign-in");
+    },
+    onError: (error) => {
+      if (isClerkRuntimeError(error) && isReverificationCancelledError(error)) {
+        toast.info("Verification cancelled", {
+          description: "You need to verify your identity to delete your account. Please try again.",
+        });
+        return;
+      }
+      toast.error("Failed to delete account", {
+        description: error instanceof Error ? error.message : "Please try again or contact support.",
+      });
     },
   });
 
