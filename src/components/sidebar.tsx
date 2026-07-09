@@ -132,6 +132,7 @@ function ChatSidebar() {
 
   // Folders
   const [foldersExpanded, setFoldersExpanded] = useState(false);
+  const [pinnedExpanded, setPinnedExpanded] = useState(true);
   const shouldFetchFolders = foldersExpanded;
   const { data: foldersData, isPending: foldersLoading } = useFolders({ enabled: shouldFetchFolders });
   const createFolder = useCreateFolder();
@@ -373,36 +374,50 @@ function ChatSidebar() {
         {/* Pinned */}
         {pinnedConversations.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel>Pinned</SidebarGroupLabel>
-            <SidebarMenu className="gap-0.5">
-              {pinnedConversations.map((conversation) => (
-                <ConversationItem
-                  key={conversation.id}
-                  conversation={conversation}
-                  isActive={conversation.id === activeConversationId}
-                  isTouchDevice={isTouchDevice}
-                  canPin={canPin}
-                  onNavigate={() => navigate(`/chats/${conversation.id}`)}
-                  onRename={() => {
-                    setConversationToRename(conversation);
-                    setNewTitle(conversation.title || '');
-                    setRenameDialogOpen(true);
-                  }}
-                  onDelete={() => {
-                    setConversationToDelete(conversation.id);
-                    setDeleteDialogOpen(true);
-                  }}
-                  onPin={() => pinConversation.mutate({ conversationId: conversation.id, pinned: false })}
-                  onArchive={() => archiveConversation.mutate({ conversationId: conversation.id, archived: true })}
-                  onMoveToFolder={() => {
-                    setConversationToMove(conversation.id);
-                    setMoveToFolderDialogOpen(true);
-                  }}
-                  onShare={() => setShareConversationId(conversation.id)}
-                  onFork={() => handleFork(conversation.id)}
+            <SidebarGroupLabel asChild>
+              <button
+                type="button"
+                onClick={() => setPinnedExpanded((v) => !v)}
+                className="flex w-full items-center gap-1"
+              >
+                <ChevronRight
+                  className={cn('size-4 shrink-0 transition-transform duration-200', pinnedExpanded && 'rotate-90')}
                 />
-              ))}
-            </SidebarMenu>
+                Pinned
+              </button>
+            </SidebarGroupLabel>
+
+            {pinnedExpanded && (
+              <SidebarMenu className="gap-0.5">
+                {pinnedConversations.map((conversation) => (
+                  <ConversationItem
+                    key={conversation.id}
+                    conversation={conversation}
+                    isActive={conversation.id === activeConversationId}
+                    isTouchDevice={isTouchDevice}
+                    canPin={canPin}
+                    onNavigate={() => navigate(`/chats/${conversation.id}`)}
+                    onRename={() => {
+                      setConversationToRename(conversation);
+                      setNewTitle(conversation.title || '');
+                      setRenameDialogOpen(true);
+                    }}
+                    onDelete={() => {
+                      setConversationToDelete(conversation.id);
+                      setDeleteDialogOpen(true);
+                    }}
+                    onPin={() => pinConversation.mutate({ conversationId: conversation.id, pinned: false })}
+                    onArchive={() => archiveConversation.mutate({ conversationId: conversation.id, archived: true })}
+                    onMoveToFolder={() => {
+                      setConversationToMove(conversation.id);
+                      setMoveToFolderDialogOpen(true);
+                    }}
+                    onShare={() => setShareConversationId(conversation.id)}
+                    onFork={() => handleFork(conversation.id)}
+                  />
+                ))}
+              </SidebarMenu>
+            )}
           </SidebarGroup>
         )}
 
