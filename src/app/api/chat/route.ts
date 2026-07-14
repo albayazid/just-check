@@ -347,7 +347,7 @@ export async function POST(req: Request) {
     const result = streamText({
       model: modelInstance,
       messages: modelMessages,
-      system: systemPrompt,
+      instructions: systemPrompt,
       tools,
       providerOptions,
       abortSignal: req.signal,
@@ -362,14 +362,14 @@ export async function POST(req: Request) {
         }
       },
 
-      experimental_onStepStart: ({ messages }) => {
+      onStepStart: ({ messages }) => {
         stepsStarted++;
         stepInputMessages = messages;
         runningStepOutputText = '';
       },
 
       // Track each step as it happens
-      onStepFinish: async ({ finishReason, usage, toolCalls, warnings, providerMetadata }) => {
+      onStepEnd: async ({ finishReason, usage, toolCalls, warnings, providerMetadata }) => {
         // Collect Step Data - using AI SDK v6 structure
         const stepUsage: StepUsage = {
           totalTokens: usage.totalTokens || 0,
@@ -413,7 +413,7 @@ export async function POST(req: Request) {
 
       },
 
-      onFinish: ({ finishReason, totalUsage, steps }) => {
+      onEnd: ({ finishReason, totalUsage, steps }) => {
         // Capture for later use in onFinish of toUIMessageStreamResponse
         streamOnFinishUsage = totalUsage;
       }
@@ -445,7 +445,7 @@ export async function POST(req: Request) {
 
       // 2. Handle original messages and DB saving
       originalMessages: messages,
-      onFinish: async ({ messages: completedMessages, isContinuation, finishReason, isAborted }) => {
+      onEnd: async ({ messages: completedMessages, isContinuation, finishReason, isAborted }) => {
 
         // The assistant message is the last one in the completed messages
         const assistantMessage = completedMessages[completedMessages.length - 1];

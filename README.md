@@ -6,7 +6,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=flat-square&logo=typescript)
 ![React](https://img.shields.io/badge/React-19.2.3-cyan?style=flat-square&logo=react)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square&logo=tailwindcss)
-![AI SDK](https://img.shields.io/badge/AI_SDK-6.0.111-purple?style=flat-square)
+![AI SDK](https://img.shields.io/badge/AI_SDK-7.0-purple?style=flat-square)
 ![Supabase](https://img.shields.io/badge/Supabase-Database-green?style=flat-square&logo=supabase)
 ![Clerk](https://img.shields.io/badge/Clerk-Auth-orange?style=flat-square)
 
@@ -94,7 +94,7 @@ Lumy is a production-ready AI chat application built with Next.js 16 (App Router
 |------------|---------|
 | Clerk 7.0.1 | Authentication & user management |
 | Supabase | PostgreSQL database |
-| Vercel AI SDK 6.0.111 | AI integration framework |
+| Vercel AI SDK 7.0 | AI integration framework |
 | OpenRouter | AI model provider |
 | Google AI | Additional AI provider |
 | DodoPayments | Subscription & payment processing |
@@ -114,7 +114,7 @@ Lumy is a production-ready AI chat application built with Next.js 16 (App Router
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 22+ 
 - npm, yarn, pnpm, or bun
 - Supabase account
 - Clerk account

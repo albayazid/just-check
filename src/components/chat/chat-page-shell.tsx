@@ -216,7 +216,7 @@ export function ChatPageShell({
 
   const { messages, sendMessage, regenerate, status, stop, setMessages, addToolOutput } = useChat({
     id: chatId,
-    experimental_throttle: 100,
+    throttle: 100,
     generateId: uuidv4,
     transport: new DefaultChatTransport({
       api: '/api/chat',

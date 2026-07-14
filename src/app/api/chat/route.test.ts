@@ -90,10 +90,10 @@ function chatRequest(overrides: Record<string, unknown> = {}): Request {
 function wireStreamText(opts: { fireOnFinish?: boolean } = {}): { onFinishFired: () => boolean } {
   let onFinishFired = false;
   vi.mocked(streamText).mockReturnValue({
-    toUIMessageStreamResponse: (uiOpts: { onFinish?: (args: unknown) => void }) => {
-      if (opts.fireOnFinish !== false && uiOpts.onFinish) {
+    toUIMessageStreamResponse: (uiOpts: { onEnd?: (args: unknown) => void }) => {
+      if (opts.fireOnFinish !== false && uiOpts.onEnd) {
         onFinishFired = true;
-        uiOpts.onFinish({
+        uiOpts.onEnd({
           messages: [
             { id: "msg-1", role: "user", parts: [{ type: "text", text: "hello" }] },
             { id: "asst-1", role: "assistant", parts: [{ type: "text", text: "response" }], metadata: {} },
