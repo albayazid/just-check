@@ -248,6 +248,20 @@ export function ChatPageShell({
     },
   });
 
+  // Refresh allowance when a generation ends, whether successfully or with error.
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    const prevStatus = prevStatusRef.current;
+    if (prevStatus === status) return;
+    prevStatusRef.current = status;
+
+    const wasGenerating = prevStatus === 'submitted' || prevStatus === 'streaming';
+    const isGenerating = status === 'submitted' || status === 'streaming';
+    if (wasGenerating && !isGenerating) {
+      queryClient.invalidateQueries({ queryKey: ['usage'] });
+    }
+  }, [status, queryClient]);
+
   useOptimisticMessages(messages, cacheChatId, queryClient);
 
   const {
