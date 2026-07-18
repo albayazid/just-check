@@ -4,7 +4,7 @@ import { useChat } from '@ai-sdk/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls, type UIMessage } from 'ai';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useCallback,
@@ -334,12 +334,12 @@ export function ChatPageShell({
           attachments: recovery.draft.attachments,
           nonce: restoreNonceRef.current,
         });
-        toast.error(chatErrorMessage(kind));
+        toast.error(chatErrorMessage(kind), { icon: kind === 'network' ? <WifiOff className="h-4 w-4" /> : undefined });
       } else if (recovery.kind === 'cutoff') {
         setFailedAssistantId(recovery.failedAssistantId);
         toast.error('Response interrupted. Try regenerating.');
       } else {
-        toast.error(chatErrorMessage(kind));
+        toast.error(chatErrorMessage(kind), { icon: kind === 'network' ? <WifiOff className="h-4 w-4" /> : undefined });
       }
 
       lastErrorRef.current = null;
