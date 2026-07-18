@@ -17,8 +17,10 @@ import { useMessageFeedback, useMessageFeedbackMutation } from '@/hooks/use-mess
 import { useIsTouchDevice } from '@/hooks/use-touch-device';
 import { cn } from '@/lib/utils';
 import { copyToClipboard } from '@/lib/utils/clipboard';
+import type { ChatErrorKind } from '@/lib/chat-error';
 import { BranchIndicator } from './BranchIndicator';
 import { AIMessageSkeleton } from './ChatHistorySkeleton';
+import { ResponseFailureNotice } from './ResponseFailureNotice';
 
 interface AIMessageProps {
   message: UIMessage;
@@ -32,6 +34,10 @@ interface AIMessageProps {
   isGenerating?: boolean;
   /** When true, hides feedback (like/dislike), regenerate, and info buttons */
   readOnly?: boolean;
+  /** When non-null, this message's stream failed with partial content preserved; shows a recovery notice below. */
+  failureKind?: ChatErrorKind | null;
+  /** Clears the failure marker (Dismiss on the notice). */
+  onDismissFailure?: () => void;
 }
 
 type FeedbackType = 'like' | 'dislike';
@@ -62,6 +68,8 @@ export const AIMessage = memo(function AIMessage({
   isLoading = false,
   isGenerating = false,
   readOnly = false,
+  failureKind = null,
+  onDismissFailure,
 }: AIMessageProps) {
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
@@ -155,6 +163,19 @@ export const AIMessage = memo(function AIMessage({
   }
 
   if (isEmpty) {
+    if (failureKind) {
+      return (
+        <div className="w-full mb-4">
+          <ResponseFailureNotice
+            kind={failureKind}
+            message="No response was generated."
+            onRegenerate={readOnly ? undefined : onRegenerate}
+            onDismiss={onDismissFailure}
+            disabled={isStreaming || isLoading || isGenerating}
+          />
+        </div>
+      );
+    }
     return (
       <div className="w-full mb-4 group text-muted-foreground prose prose-sm italic">
         <Response className='wrap-anywhere'>No response generated. Please try again.</Response>
@@ -214,6 +235,16 @@ export const AIMessage = memo(function AIMessage({
           }
         })}
       </div>
+
+      {failureKind && (
+        <ResponseFailureNotice
+          kind={failureKind}
+          message="Response interrupted. Try regenerating."
+          onRegenerate={readOnly ? undefined : onRegenerate}
+          onDismiss={onDismissFailure}
+          disabled={isStreaming || isLoading || isGenerating}
+        />
+      )}
 
       {/* Action buttons below the message */}
       <div className={cn('flex items-center gap-1 mt-2', isTouchDevice && 'opacity-100')}>

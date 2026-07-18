@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls, type UIMessage } from 'ai';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   useCallback,
   useEffect,
@@ -20,6 +21,12 @@ import type { EditMessagePart } from '@/components/messages/renderers/UserMessag
 import { useBranchSync } from '@/hooks/use-branch-sync';
 import { getLastRealMessageId, type SiblingInfo } from '@/hooks/use-branch-state';
 import { useOptimisticMessages } from '@/hooks/use-optimistic-messages';
+import {
+  chatErrorMessage,
+  classifyChatError,
+  computeFailureRecovery,
+  type ChatErrorKind,
+} from '@/lib/chat-error';
 import { executeClientTool } from '@/lib/tools/client-executors';
 import type { ClientMessageMetadata } from '@/lib/conversation-history/types';
 
@@ -36,6 +43,20 @@ export type ChatPageShellPendingMessage = {
   /** Ephemeral chat mode for this pending send (null = Default). */
   mode?: string | null;
   body?: Record<string, unknown>;
+};
+
+/** A failed-send's text + attachments, handed back to the composer to resubmit. */
+export type ChatPageShellRestoreDraft = {
+  text: string;
+  attachments: ChatPageShellAttachment[];
+  /** Bumped per failure so the composer re-applies even identical content. */
+  nonce: number;
+};
+
+/** Tracked cutoff failure on an assistant message, for inline notice rendering. */
+export type FailedAssistantInfo = {
+  id: string;
+  kind: ChatErrorKind;
 };
 
 type SendRequestOptions = {
@@ -214,7 +235,31 @@ export function ChatPageShell({
     setCurrentModeId(id);
   }, []);
 
-  const { messages, sendMessage, regenerate, status, stop, setMessages, addToolOutput } = useChat({
+  // ---------------------------------------------------------------------------
+  // Failure recovery state.
+  //
+  // useChat optimistically pushes the user message before the request and leaves
+  // it (plus any partial reply) in the list when a generation fails, with status
+  // stuck at 'error'. We turn that silent failure into a recoverable UX:
+  //   - send that never streamed → drop the stuck message, restore its text to
+  //     the composer so the user can resubmit;
+  //   - stream that cut off mid-reply → keep the partial response and offer
+  //     Regenerate;
+  //   - always clear the error so the next send isn't blocked.
+  // The status→'error' transition also fires the allowance-refresh effect
+  // below, so an allowance failure re-fetches usage automatically.
+  // ---------------------------------------------------------------------------
+  const lastErrorRef = useRef<Error | null>(null);
+  const inFlightTriggerRef = useRef<'submit-message' | 'regenerate-message' | null>(null);
+  const restoreNonceRef = useRef(0);
+  const [restoreDraft, setRestoreDraft] = useState<ChatPageShellRestoreDraft | null>(null);
+  const [failedAssistant, setFailedAssistant] = useState<FailedAssistantInfo | null>(null);
+
+  // Capture the request trigger per send so recovery knows whether a fresh user
+  // message was pushed (submit) vs. an existing turn was regenerated. Set in the
+  // send handlers below (not in the transport) so no ref is touched during render.
+
+  const { messages, sendMessage, regenerate, status, stop, setMessages, addToolOutput, clearError } = useChat({
     id: chatId,
     throttle: 100,
     generateId: uuidv4,
@@ -246,7 +291,81 @@ export function ChatPageShell({
         output: result.output,
       });
     },
+    onError(error) {
+      lastErrorRef.current = error;
+    },
+    onFinish({ message: assistantMessage, messages: finalMessages, isError, isAbort }) {
+      // User-initiated stop: the SDK keeps the partial and resets to 'ready'.
+      if (isAbort) return;
+      if (!isError) {
+        setFailedAssistant(null);
+        return;
+      }
+      handleGenerationFailure({ assistantMessage, messages: finalMessages });
+    },
   });
+
+  // Recover from a failed generation. Runs from onFinish (one shot per request,
+  // authoritative messages) so there's no re-entrancy risk.
+  const handleGenerationFailure = useCallback(
+    ({
+      assistantMessage,
+      messages: finalMessages,
+    }: {
+      assistantMessage: UIMessage | undefined;
+      messages: UIMessage[];
+    }) => {
+      const trigger = inFlightTriggerRef.current;
+      const kind = classifyChatError(lastErrorRef.current);
+      const recovery = computeFailureRecovery({
+        messages: finalMessages,
+        assistantMessage,
+        trigger,
+      });
+
+      if (recovery.kind === 'failed-send') {
+        // Remove the ghost by specific IDs derived from the authoritative
+        // finalMessages — applied identically to both SDK state and cache so
+        // a stale cache can't cause collateral deletion.
+        const idsToRemove = new Set(recovery.messageIdsToRemove);
+        const cleanedMessages = finalMessages.filter((m) => !idsToRemove.has(m.id));
+        setMessages(cleanedMessages);
+        queryClient.setQueryData<{ messages: UIMessage[] } | undefined>(
+          ['messages', cacheChatId],
+          (old) => {
+            if (!old?.messages) return old;
+            const filtered = old.messages.filter((m) => !idsToRemove.has(m.id));
+            return filtered.length === old.messages.length ? old : { ...old, messages: filtered };
+          },
+        );
+        restoreNonceRef.current += 1;
+        setRestoreDraft({
+          text: recovery.draft.text,
+          attachments: recovery.draft.attachments,
+          nonce: restoreNonceRef.current,
+        });
+        toast.error(chatErrorMessage(kind));
+      } else if (recovery.kind === 'cutoff') {
+        setFailedAssistant({ id: recovery.failedAssistantId, kind });
+        toast.error('Response interrupted. Try regenerating.');
+      } else {
+        toast.error(chatErrorMessage(kind));
+      }
+
+      lastErrorRef.current = null;
+      inFlightTriggerRef.current = null;
+      clearError();
+    },
+    [cacheChatId, clearError, queryClient, setMessages],
+  );
+
+  const dismissAssistantFailure = useCallback(() => {
+    setFailedAssistant(null);
+  }, []);
+
+  const handleRestoreDraftConsumed = useCallback(() => {
+    setRestoreDraft(null);
+  }, []);
 
   // Refresh allowance when a generation ends, whether successfully or with error.
   const prevStatusRef = useRef(status);
@@ -316,6 +435,7 @@ export function ChatPageShell({
       return;
     }
 
+    inFlightTriggerRef.current = 'submit-message';
     sendMessage(
       { parts: buildMessageParts(pendingMessage.message, pendingMessage.attachments) },
       {
@@ -342,6 +462,8 @@ export function ChatPageShell({
       return;
     }
 
+    inFlightTriggerRef.current = 'submit-message';
+    setFailedAssistant(null);
     void onSubmitMessage({
       text,
       attachments,
@@ -358,6 +480,8 @@ export function ChatPageShell({
       return;
     }
 
+    inFlightTriggerRef.current = 'submit-message';
+    setFailedAssistant(null);
     branchState.clearOverride(previousMessageId);
 
     if (previousMessageId) {
@@ -381,6 +505,8 @@ export function ChatPageShell({
       return;
     }
 
+    inFlightTriggerRef.current = 'regenerate-message';
+    setFailedAssistant(null);
     branchState.clearOverride(parentId);
     onSubmitRegeneratedMessage({
       messageId,
@@ -481,6 +607,12 @@ export function ChatPageShell({
                       onUIModelChange={handleUIModelChange}
                       hasAllowance={hasAllowance}
                       isLoadingAllowance={isLoadingAllowance}
+                      failureKind={
+                        failedAssistant && message.id === failedAssistant.id
+                          ? failedAssistant.kind
+                          : null
+                      }
+                      onDismissFailure={dismissAssistantFailure}
                     />
                   );
                 })}
@@ -535,6 +667,9 @@ export function ChatPageShell({
                 remainingPercentage={remainingPercentage}
                 allowanceResetTime={allowanceResetTime}
                 isLoadingAllowance={isLoadingAllowance}
+                conversationId={chatId}
+                restoreDraft={restoreDraft}
+                onRestoreDraftConsumed={handleRestoreDraftConsumed}
               />
             </motion.div>
             <p className="mt-1 text-center text-[12px] text-gray-500">

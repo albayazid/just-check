@@ -60,12 +60,15 @@ export async function POST(req: Request) {
   try {
     const { userId: clerkUserId } = await auth();
     if (!clerkUserId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, { status: 401 });
     }
 
     const { success } = await chatRatelimit.limit(clerkUserId);
     if (!success) {
-      return NextResponse.json({ error: 'Too many requests. Please wait a moment.' }, { status: 429 });
+      return NextResponse.json(
+        { error: 'Too many requests. Please wait a moment.', code: 'RATE_LIMITED' },
+        { status: 429 },
+      );
     }
 
     const parsed = chatBodySchema.safeParse(await req.json());
@@ -100,7 +103,10 @@ export async function POST(req: Request) {
       .single();
 
     if (convError || !conversation) {
-      return NextResponse.json({ error: 'Conversation not found or access denied' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Conversation not found or access denied', code: 'CONVERSATION_NOT_FOUND' },
+        { status: 404 },
+      );
     }
 
     // For regeneration, look up the parent of the message being regenerated
@@ -136,7 +142,10 @@ export async function POST(req: Request) {
     if (isNewUserTurn) {
       const remainingAllowance = await getRemainingAllowance(clerkUserId);
       if (remainingAllowance <= 0) {
-        return NextResponse.json({ error: 'Insufficient allowance' }, { status: 402 });
+        return NextResponse.json(
+          { error: 'Insufficient allowance', code: 'INSUFFICIENT_ALLOWANCE' },
+          { status: 402 },
+        );
       }
     }
 
