@@ -25,7 +25,6 @@ import {
   chatErrorMessage,
   classifyChatError,
   computeFailureRecovery,
-  type ChatErrorKind,
 } from '@/lib/chat-error';
 import { executeClientTool } from '@/lib/tools/client-executors';
 import type { ClientMessageMetadata } from '@/lib/conversation-history/types';
@@ -51,12 +50,6 @@ export type ChatPageShellRestoreDraft = {
   attachments: ChatPageShellAttachment[];
   /** Bumped per failure so the composer re-applies even identical content. */
   nonce: number;
-};
-
-/** Tracked cutoff failure on an assistant message, for inline notice rendering. */
-export type FailedAssistantInfo = {
-  id: string;
-  kind: ChatErrorKind;
 };
 
 type SendRequestOptions = {
@@ -250,7 +243,7 @@ export function ChatPageShell({
   const inFlightTriggerRef = useRef<'submit-message' | 'regenerate-message' | null>(null);
   const restoreNonceRef = useRef(0);
   const [restoreDraft, setRestoreDraft] = useState<ChatPageShellRestoreDraft | null>(null);
-  const [failedAssistant, setFailedAssistant] = useState<FailedAssistantInfo | null>(null);
+  const [failedAssistantId, setFailedAssistantId] = useState<string | null>(null);
 
   // Capture the request trigger per send so recovery knows whether a fresh user
   // message was pushed (submit) vs. an existing turn was regenerated. Set in the
@@ -295,7 +288,7 @@ export function ChatPageShell({
       // User-initiated stop: the SDK keeps the partial and resets to 'ready'.
       if (isAbort) return;
       if (!isError) {
-        setFailedAssistant(null);
+        setFailedAssistantId(null);
         return;
       }
       handleGenerationFailure({ assistantMessage, messages: finalMessages });
@@ -343,7 +336,7 @@ export function ChatPageShell({
         });
         toast.error(chatErrorMessage(kind));
       } else if (recovery.kind === 'cutoff') {
-        setFailedAssistant({ id: recovery.failedAssistantId, kind });
+        setFailedAssistantId(recovery.failedAssistantId);
         toast.error('Response interrupted. Try regenerating.');
       } else {
         toast.error(chatErrorMessage(kind));
@@ -355,10 +348,6 @@ export function ChatPageShell({
     },
     [chatId, clearError, queryClient, setMessages],
   );
-
-  const dismissAssistantFailure = useCallback(() => {
-    setFailedAssistant(null);
-  }, []);
 
   const handleRestoreDraftConsumed = useCallback(() => {
     setRestoreDraft(null);
@@ -460,7 +449,7 @@ export function ChatPageShell({
     }
 
     inFlightTriggerRef.current = 'submit-message';
-    setFailedAssistant(null);
+    setFailedAssistantId(null);
     void onSubmitMessage({
       text,
       attachments,
@@ -478,7 +467,7 @@ export function ChatPageShell({
     }
 
     inFlightTriggerRef.current = 'submit-message';
-    setFailedAssistant(null);
+    setFailedAssistantId(null);
     branchState.clearOverride(previousMessageId);
 
     if (previousMessageId) {
@@ -503,7 +492,7 @@ export function ChatPageShell({
     }
 
     inFlightTriggerRef.current = 'regenerate-message';
-    setFailedAssistant(null);
+    setFailedAssistantId(null);
     branchState.clearOverride(parentId);
     onSubmitRegeneratedMessage({
       messageId,
@@ -604,12 +593,7 @@ export function ChatPageShell({
                       onUIModelChange={handleUIModelChange}
                       hasAllowance={hasAllowance}
                       isLoadingAllowance={isLoadingAllowance}
-                      failureKind={
-                        failedAssistant && message.id === failedAssistant.id
-                          ? failedAssistant.kind
-                          : null
-                      }
-                      onDismissFailure={dismissAssistantFailure}
+                      failedAssistantId={failedAssistantId}
                     />
                   );
                 })}

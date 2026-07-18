@@ -5,7 +5,6 @@ import { UIMessage } from 'ai';
 import { UserMessage } from './UserMessage';
 import type { EditMessagePart } from './UserMessage';
 import { AIMessage } from './AIMessage';
-import type { ChatErrorKind } from '@/lib/chat-error';
 
 interface MessageRendererProps {
   message: UIMessage;
@@ -25,10 +24,8 @@ interface MessageRendererProps {
   isLoadingAllowance?: boolean;
   /** When provided, uses the public share endpoint to resolve attachment URLs instead of the authenticated one. Also enables readOnly mode. */
   shareToken?: string;
-  /** When non-null, this assistant message's stream failed; renders an inline notice below it. */
-  failureKind?: ChatErrorKind | null;
-  /** Clears the failed-assistant marker (Dismiss on the notice). */
-  onDismissFailure?: () => void;
+  /** ID of the assistant message whose stream failed; renders a notice below it. */
+  failedAssistantId?: string | null;
 }
 
 export const MessageRenderer = memo(function MessageRenderer({
@@ -48,8 +45,7 @@ export const MessageRenderer = memo(function MessageRenderer({
   hasAllowance,
   isLoadingAllowance,
   shareToken,
-  failureKind,
-  onDismissFailure,
+  failedAssistantId,
 }: MessageRendererProps) {
   const readOnly = !!shareToken;
 
@@ -86,9 +82,7 @@ export const MessageRenderer = memo(function MessageRenderer({
           isLoading={isLoading}
           isGenerating={isGenerating}
           readOnly={readOnly}
-          status={failureKind ? 'failed' : 'normal'}
-          failureKind={failureKind}
-          onDismissFailure={onDismissFailure}
+          status={failedAssistantId === message.id ? 'failed' : 'normal'}
         />
       );
     default:
