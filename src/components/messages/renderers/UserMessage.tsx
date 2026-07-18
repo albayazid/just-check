@@ -33,6 +33,8 @@ interface UserMessageProps {
   isLoadingAllowance?: boolean;
   /** When provided, resolves attachments via the public share endpoint instead of the authenticated one. Also enables readOnly mode. */
   shareToken?: string;
+  /** Delivery status — reserved for future use (e.g. failed-send Retry UI). */
+  status?: 'normal' | 'failed';
 }
 
 /**

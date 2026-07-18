@@ -86,6 +86,7 @@ export const MessageRenderer = memo(function MessageRenderer({
           isLoading={isLoading}
           isGenerating={isGenerating}
           readOnly={readOnly}
+          status={failureKind ? 'failed' : 'normal'}
           failureKind={failureKind}
           onDismissFailure={onDismissFailure}
         />

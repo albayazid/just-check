@@ -34,7 +34,9 @@ interface AIMessageProps {
   isGenerating?: boolean;
   /** When true, hides feedback (like/dislike), regenerate, and info buttons */
   readOnly?: boolean;
-  /** When non-null, this message's stream failed with partial content preserved; shows a recovery notice below. */
+  /** Delivery status — 'failed' shows a recovery notice below the message. */
+  status?: 'normal' | 'failed';
+  /** Error classification for notice styling. Only meaningful when status is 'failed'. */
   failureKind?: ChatErrorKind | null;
   /** Clears the failure marker (Dismiss on the notice). */
   onDismissFailure?: () => void;
@@ -68,6 +70,7 @@ export const AIMessage = memo(function AIMessage({
   isLoading = false,
   isGenerating = false,
   readOnly = false,
+  status = 'normal',
   failureKind = null,
   onDismissFailure,
 }: AIMessageProps) {
@@ -163,11 +166,11 @@ export const AIMessage = memo(function AIMessage({
   }
 
   if (isEmpty) {
-    if (failureKind) {
+    if (status === 'failed') {
       return (
         <div className="w-full mb-4">
           <ResponseFailureNotice
-            kind={failureKind}
+            kind={failureKind ?? 'generic'}
             message="No response was generated."
             onRegenerate={readOnly ? undefined : onRegenerate}
             onDismiss={onDismissFailure}
@@ -236,9 +239,9 @@ export const AIMessage = memo(function AIMessage({
         })}
       </div>
 
-      {failureKind && (
+      {status === 'failed' && (
         <ResponseFailureNotice
-          kind={failureKind}
+          kind={failureKind ?? 'generic'}
           message="Response interrupted. Try regenerating."
           onRegenerate={readOnly ? undefined : onRegenerate}
           onDismiss={onDismissFailure}
