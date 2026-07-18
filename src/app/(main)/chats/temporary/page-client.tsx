@@ -195,7 +195,6 @@ export default function TemporaryChatPageClient() {
       <div className="min-h-0 flex-1">
         <ChatPageShell
           chatId={localSessionIdRef.current}
-          branchChatId={branchChatKey}
           messagesData={messagesData}
           prepareSendMessagesRequest={({ messages, body, trigger, messageId }) => ({
             body: { id: body?.id ?? conversationId, messages, trigger, messageId, ...body },

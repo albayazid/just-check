@@ -95,7 +95,6 @@ type ChatPageRegenerateContext = {
 
 interface ChatPageShellProps {
   chatId: string;
-  branchChatId?: string;
   messagesData: { messages: UIMessage[] } | undefined;
   prepareSendMessagesRequest: (options: SendRequestOptions) => {
     body: Record<string, unknown>;
@@ -140,7 +139,6 @@ function buildMessageParts(text: string, attachments?: ChatPageShellAttachment[]
 
 export function ChatPageShell({
   chatId,
-  branchChatId,
   messagesData,
   prepareSendMessagesRequest,
   isLoadingHistory = false,
@@ -163,7 +161,6 @@ export function ChatPageShell({
   onVisibleLeafChange,
 }: ChatPageShellProps) {
   const queryClient = useQueryClient();
-  const cacheChatId = branchChatId ?? chatId;
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isUserAtBottomRef = useRef(true);
@@ -331,7 +328,7 @@ export function ChatPageShell({
         const cleanedMessages = finalMessages.filter((m) => !idsToRemove.has(m.id));
         setMessages(cleanedMessages);
         queryClient.setQueryData<{ messages: UIMessage[] } | undefined>(
-          ['messages', cacheChatId],
+          ['messages', chatId],
           (old) => {
             if (!old?.messages) return old;
             const filtered = old.messages.filter((m) => !idsToRemove.has(m.id));
@@ -356,7 +353,7 @@ export function ChatPageShell({
       inFlightTriggerRef.current = null;
       clearError();
     },
-    [cacheChatId, clearError, queryClient, setMessages],
+    [chatId, clearError, queryClient, setMessages],
   );
 
   const dismissAssistantFailure = useCallback(() => {
@@ -381,7 +378,7 @@ export function ChatPageShell({
     }
   }, [status, queryClient]);
 
-  useOptimisticMessages(messages, cacheChatId, queryClient);
+  useOptimisticMessages(messages, chatId, queryClient);
 
   const {
     displayedMessages: branchDisplayedMessages,
@@ -390,7 +387,7 @@ export function ChatPageShell({
     handleBranchPrevious,
     handleBranchNext,
     toUIMessage,
-  } = useBranchSync(messagesData, cacheChatId);
+  } = useBranchSync(messagesData, chatId);
 
   const streamingLastMessageId = useMemo(() => {
     return messages.length > 0 ? messages[messages.length - 1].id : null;
