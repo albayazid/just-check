@@ -5,8 +5,6 @@ import {
   parseChatErrorBody,
   chatErrorMessage,
   assistantMessageHasContent,
-  extractUserDraft,
-  removeFailedUserTurn,
   computeFailureRecovery,
   ChatErrorCode,
 } from './chat-error';
@@ -61,6 +59,10 @@ describe('classifyChatError', () => {
     expect(classifyChatError(new TypeError('Network request failed'))).toBe('network');
   });
 
+  it('detects Safari network failures (plain Error: Load failed)', () => {
+    expect(classifyChatError(new Error('Load failed'))).toBe('network');
+  });
+
   it('falls back to keyword matching on plain-string bodies', () => {
     expect(classifyChatError(new Error('Insufficient allowance'))).toBe('allowance');
     expect(classifyChatError(new Error('Too many requests. Please wait.'))).toBe('rate-limit');
@@ -71,6 +73,16 @@ describe('classifyChatError', () => {
   it('defaults to generic for unknown errors', () => {
     expect(classifyChatError(new Error('Failed to process chat'))).toBe('generic');
     expect(classifyChatError(null)).toBe('generic');
+  });
+
+  it('returns generic for JSON errors with unknown codes (does not keyword-match raw JSON)', () => {
+    expect(classifyChatError(routeError({ error: 'Keyword not found in input', code: 'VALIDATION_ERROR' }))).toBe('generic');
+    expect(classifyChatError(routeError({ error: 'File not found or access denied', code: 'FILE_ACCESS_DENIED' }))).toBe('generic');
+    expect(classifyChatError(routeError({ error: 'Failed to process chat', code: 'INTERNAL_ERROR' }))).toBe('generic');
+  });
+
+  it('returns generic for JSON errors with no code (does not keyword-match raw JSON)', () => {
+    expect(classifyChatError(routeError({ error: 'File not found or access denied' }))).toBe('generic');
   });
 });
 
@@ -101,53 +113,6 @@ describe('assistantMessageHasContent', () => {
   });
 });
 
-describe('extractUserDraft', () => {
-  it('extracts text + attachments from the last user message', () => {
-    const msgs: UIMessage[] = [
-      userMessage('u1', 'first'),
-      assistantMessage('a1', 'reply'),
-      {
-        id: 'u2',
-        role: 'user',
-        parts: [
-          { type: 'text', text: '  hello world  ' },
-          { type: 'file', url: 'attachment://abc', mediaType: 'image/png', filename: 'cat.png' },
-        ],
-      } as UIMessage,
-    ];
-    expect(extractUserDraft(msgs)).toEqual({
-      text: 'hello world',
-      attachments: [{ url: 'attachment://abc', originalName: 'cat.png', mimeType: 'image/png' }],
-    });
-  });
-
-  it('returns null when there is no user message', () => {
-    expect(extractUserDraft([assistantMessage('a1', 'hi')])).toBeNull();
-  });
-
-  it('returns null when the last user message has no text or files', () => {
-    expect(extractUserDraft([{ id: 'u', role: 'user', parts: [] } as UIMessage])).toBeNull();
-  });
-});
-
-describe('removeFailedUserTurn', () => {
-  it('drops the last user message and any trailing assistant placeholder', () => {
-    const msgs: UIMessage[] = [
-      userMessage('u1', 'first'),
-      assistantMessage('a1', 'reply'),
-      userMessage('u2', 'stuck'),
-      assistantMessage('a2', null), // empty placeholder
-    ];
-    const cleaned = removeFailedUserTurn(msgs);
-    expect(cleaned.map((m) => m.id)).toEqual(['u1', 'a1']);
-  });
-
-  it('is a no-op when there is no user message', () => {
-    const msgs: UIMessage[] = [assistantMessage('a1', 'hi')];
-    expect(removeFailedUserTurn(msgs)).toBe(msgs);
-  });
-});
-
 describe('computeFailureRecovery', () => {
   const baseMessages: UIMessage[] = [userMessage('u1', 'hi')];
 
@@ -160,19 +125,13 @@ describe('computeFailureRecovery', () => {
     expect(result).toEqual({ kind: 'cutoff', failedAssistantId: 'a1' });
   });
 
-  it('removes the stuck user message + restores the draft on a pre-stream failed send (last message is user)', () => {
-    // Pre-stream failure: the SDK pushed the user optimistically but the
-    // fetch failed before any stream chunk arrived. The assistant was never
-    // written into the message list — the last message IS the user's ghost.
+  it('tags the stuck user message as failed on a pre-stream failed send', () => {
     const result = computeFailureRecovery({
       messages: [...baseMessages, userMessage('u2', 'stuck')],
       assistantMessage: undefined,
       trigger: 'submit-message',
     });
-    expect(result.kind).toBe('failed-send');
-    if (result.kind !== 'failed-send') return;
-    expect(result.draft.text).toBe('stuck');
-    expect(result.messageIdsToRemove).toEqual(['u2']);
+    expect(result).toEqual({ kind: 'failed-user-message', failedUserId: 'u2' });
   });
 
   it('keeps everything for a mid-stream failure with empty assistant (last message is assistant)', () => {

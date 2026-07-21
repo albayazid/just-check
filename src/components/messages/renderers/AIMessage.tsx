@@ -160,7 +160,7 @@ export const AIMessage = memo(function AIMessage({
   if (isEmpty) {
     if (status === 'failed') {
       return (
-        <div className="w-full mb-4 text-sm text-muted-foreground italic">
+        <div role="alert" className="w-full mb-4 text-sm text-muted-foreground italic">
           No response generated.{' '}
           {onRegenerate && !readOnly && (
             <button
@@ -236,7 +236,7 @@ export const AIMessage = memo(function AIMessage({
       </div>
 
       {status === 'failed' && (
-        <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground italic">
+        <div role="alert" className="mt-2 flex items-center gap-2 text-sm text-muted-foreground italic">
           <span>Response interrupted.</span>
           {onRegenerate && !readOnly && (
             <button

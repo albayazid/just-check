@@ -111,10 +111,6 @@ interface ChatInputProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onS
   existingAttachments?: ChatInputAttachment[];
   /** Cancel callback — enables edit mode (Cancel button, Escape key, hides model/voice) */
   onCancel?: () => void;
-  /** Draft text + attachments restored into the composer after a failed send. */
-  restoreDraft?: { text: string; attachments: ChatInputAttachment[]; nonce: number } | null;
-  /** Called once a `restoreDraft` has been applied to the composer. */
-  onRestoreDraftConsumed?: () => void;
 }
 interface AttachedFile {
   id: string;
@@ -232,8 +228,6 @@ export function ChatInput({
   existingAttachments,
   onCancel,
   conversationId,
-  restoreDraft,
-  onRestoreDraftConsumed,
   ...props
 }: ChatInputProps) {
   const [inputValue, setInputValue] = useState(initialValue ?? "");
@@ -279,22 +273,6 @@ export function ChatInput({
       textarea.style.height = `${newHeight}px`;
     }
   }, [inputValue]);
-
-  // Apply a restored draft (after a failed send) back into the composer so the
-  // user can review and resubmit. Keyed on the draft identity; consuming clears
-  // it upstream so this fires once per failure.
-  useEffect(() => {
-    if (!restoreDraft) return;
-    setInputValue(restoreDraft.text);
-    setKeptAttachments(restoreDraft.attachments);
-    onRestoreDraftConsumed?.();
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.focus();
-      const end = restoreDraft.text.length;
-      textarea.setSelectionRange(end, end);
-    }
-  }, [restoreDraft, onRestoreDraftConsumed]);
 
   // #region This codeblock is responsible for auto focus on load. If you want to remove auto focus, just delete this block.
   // Auto-focus on the textarea when the component mounts

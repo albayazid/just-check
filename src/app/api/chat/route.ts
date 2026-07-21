@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     const parsed = chatBodySchema.safeParse(await req.json());
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid request body', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) },
+        { error: 'Invalid request body', code: 'INVALID_REQUEST', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) },
         { status: 400 }
       );
     }
@@ -84,7 +84,7 @@ export async function POST(req: Request) {
     const messageValidation = await validateChatMessages(rawMessages);
     if (!messageValidation.success) {
       return NextResponse.json(
-        { error: messageValidation.error, details: messageValidation.details },
+        { error: messageValidation.error, code: 'VALIDATION_FAILED', details: messageValidation.details },
         { status: 400 }
       );
     }
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
         .eq('conversation_id', conversationId)
         .single();
       if (!parentMsg) {
-        return NextResponse.json({ error: 'Invalid parent message' }, { status: 400 });
+        return NextResponse.json({ error: 'Invalid parent message', code: 'INVALID_PARENT' }, { status: 400 });
       }
     }
 
@@ -219,7 +219,7 @@ export async function POST(req: Request) {
         const allowed = await validateFileAccess(fileIds, clerkUserId, conversationId);
         if (!allowed) {
           return NextResponse.json(
-            { error: 'File not found or access denied' },
+            { error: 'File not found or access denied', code: 'FILE_ACCESS_DENIED' },
             { status: 403 }
           );
         }
@@ -571,6 +571,6 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error('Chat API error:', error);
-    return NextResponse.json({ error: 'Failed to process chat' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to process chat', code: 'INTERNAL_ERROR' }, { status: 500 });
   }
 }

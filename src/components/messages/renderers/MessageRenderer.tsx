@@ -26,6 +26,12 @@ interface MessageRendererProps {
   shareToken?: string;
   /** ID of the assistant message whose stream failed; renders a notice below it. */
   failedAssistantId?: string | null;
+  /** IDs of user messages whose send failed; shows a Retry button below them. */
+  failedUserIds?: Set<string>;
+  /** Retries a failed user message by its ID. */
+  onRetryUserMessage?: (messageId: string) => void;
+  /** Whether the user can send/regenerate right now (allowance + other gates). */
+  canSendMessages?: boolean;
 }
 
 export const MessageRenderer = memo(function MessageRenderer({
@@ -46,6 +52,9 @@ export const MessageRenderer = memo(function MessageRenderer({
   isLoadingAllowance,
   shareToken,
   failedAssistantId,
+  failedUserIds,
+  onRetryUserMessage,
+  canSendMessages,
 }: MessageRendererProps) {
   const readOnly = !!shareToken;
 
@@ -67,6 +76,9 @@ export const MessageRenderer = memo(function MessageRenderer({
           hasAllowance={hasAllowance}
           isLoadingAllowance={isLoadingAllowance}
           shareToken={shareToken}
+          status={failedUserIds?.has(message.id) ? 'failed' : 'normal'}
+          onRetry={onRetryUserMessage ? () => onRetryUserMessage(message.id) : undefined}
+          canSendMessages={canSendMessages}
         />
       );
     case 'assistant':

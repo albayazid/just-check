@@ -44,13 +44,6 @@ export type ChatPageShellPendingMessage = {
   body?: Record<string, unknown>;
 };
 
-/** A failed-send's text + attachments, handed back to the composer to resubmit. */
-export type ChatPageShellRestoreDraft = {
-  text: string;
-  attachments: ChatPageShellAttachment[];
-  /** Bumped per failure so the composer re-applies even identical content. */
-  nonce: number;
-};
 
 type SendRequestOptions = {
   id?: string;
@@ -229,20 +222,21 @@ export function ChatPageShell({
   // Failure recovery state.
   //
   // useChat optimistically pushes the user message before the request and leaves
-  // it (plus any partial reply) in the list when a generation fails, with status
-  // stuck at 'error'. We turn that silent failure into a recoverable UX:
-  //   - send that never streamed → drop the stuck message, restore its text to
-  //     the composer so the user can resubmit;
-  //   - stream that cut off mid-reply → keep the partial response and offer
-  //     Regenerate;
-  //   - always clear the error so the next send isn't blocked.
+  // it in the list when a generation fails, with status stuck at 'error'. We
+  // turn that silent failure into a recoverable UX:
+  //   - Pre-stream failure (server rejected before streaming): the ghost user
+  //     message stays in place — tagged as "failed" so the UI shows a Retry
+  //     button below it. If the user sends a new message, ghosts are removed
+  //     and bypassed for previousMessageId.
+  //   - Stream that cut off mid-reply: keep the partial response and offer
+  //     Regenerate (inline notice below the assistant message).
+  //   - Always clear the error so the next send isn't blocked.
   // The status→'error' transition also fires the allowance-refresh effect
   // below, so an allowance failure re-fetches usage automatically.
   // ---------------------------------------------------------------------------
   const lastErrorRef = useRef<Error | null>(null);
   const inFlightTriggerRef = useRef<'submit-message' | 'regenerate-message' | null>(null);
-  const restoreNonceRef = useRef(0);
-  const [restoreDraft, setRestoreDraft] = useState<ChatPageShellRestoreDraft | null>(null);
+  const [failedUserIds, setFailedUserIds] = useState<Set<string>>(new Set());
   const [failedAssistantId, setFailedAssistantId] = useState<string | null>(null);
 
   // Capture the request trigger per send so recovery knows whether a fresh user
@@ -313,27 +307,9 @@ export function ChatPageShell({
         trigger,
       });
 
-      if (recovery.kind === 'failed-send') {
-        // Remove the ghost by specific IDs derived from the authoritative
-        // finalMessages — applied identically to both SDK state and cache so
-        // a stale cache can't cause collateral deletion.
-        const idsToRemove = new Set(recovery.messageIdsToRemove);
-        const cleanedMessages = finalMessages.filter((m) => !idsToRemove.has(m.id));
-        setMessages(cleanedMessages);
-        queryClient.setQueryData<{ messages: UIMessage[] } | undefined>(
-          ['messages', chatId],
-          (old) => {
-            if (!old?.messages) return old;
-            const filtered = old.messages.filter((m) => !idsToRemove.has(m.id));
-            return filtered.length === old.messages.length ? old : { ...old, messages: filtered };
-          },
-        );
-        restoreNonceRef.current += 1;
-        setRestoreDraft({
-          text: recovery.draft.text,
-          attachments: recovery.draft.attachments,
-          nonce: restoreNonceRef.current,
-        });
+      if (recovery.kind === 'failed-user-message') {
+        // Keep the ghost in place — tag it as failed so the UI shows Retry.
+        setFailedUserIds((prev) => new Set(prev).add(recovery.failedUserId));
         toast.error(chatErrorMessage(kind), { icon: kind === 'network' ? <WifiOff className="h-4 w-4" /> : undefined });
       } else if (recovery.kind === 'cutoff') {
         setFailedAssistantId(recovery.failedAssistantId);
@@ -346,12 +322,64 @@ export function ChatPageShell({
       inFlightTriggerRef.current = null;
       clearError();
     },
-    [chatId, clearError, queryClient, setMessages],
+    [chatId, clearError],
   );
 
-  const handleRestoreDraftConsumed = useCallback(() => {
-    setRestoreDraft(null);
-  }, []);
+  // Remove all failed ghosts from the cache and clear the tracking set.
+  // Callers that also need to prune SDK state should capture failedUserIds
+  // before calling this (see handleSendMessage).
+  const clearFailedGhosts = useCallback(() => {
+    if (failedUserIds.size === 0) return;
+    const idsToRemove = new Set(failedUserIds);
+    queryClient.setQueryData<{ messages: UIMessage[] } | undefined>(
+      ['messages', chatId],
+      (old) => {
+        if (!old?.messages) return old;
+        const filtered = old.messages.filter((m) => !idsToRemove.has(m.id));
+        return filtered.length === old.messages.length ? old : { ...old, messages: filtered };
+      },
+    );
+    setFailedUserIds(new Set());
+  }, [chatId, failedUserIds, queryClient]);
+
+  // Retry a failed user message: remove the ghost, re-send its content.
+  const handleRetryUserMessage = useCallback((messageId: string) => {
+    if (!canSendMessages) return;
+    const failedMsg = messages.find((m) => m.id === messageId);
+    if (!failedMsg || failedMsg.role !== 'user') return;
+
+    // Clear the failed tag
+    setFailedUserIds((prev) => {
+      const next = new Set(prev);
+      next.delete(messageId);
+      return next;
+    });
+
+    // Remove the ghost from SDK state + cache
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    queryClient.setQueryData<{ messages: UIMessage[] } | undefined>(
+      ['messages', chatId],
+      (old) => {
+        if (!old?.messages) return old;
+        const filtered = old.messages.filter((m) => m.id !== messageId);
+        return filtered.length === old.messages.length ? old : { ...old, messages: filtered };
+      },
+    );
+
+    // Re-send the failed message's content
+    inFlightTriggerRef.current = 'submit-message';
+    const remainingMessages = messages.filter((m) => m.id !== messageId);
+    sendMessage(
+      { parts: failedMsg.parts },
+      {
+        body: {
+          UIModelId: currentUIModelId,
+          mode: currentModeId,
+          previousMessageId: getLastRealMessageId(remainingMessages),
+        },
+      },
+    );
+  }, [chatId, canSendMessages, currentUIModelId, currentModeId, messages, queryClient, sendMessage, setMessages]);
 
   // Refresh allowance when a generation ends, whether successfully or with error.
   const prevStatusRef = useRef(status);
@@ -450,16 +478,31 @@ export function ChatPageShell({
 
     inFlightTriggerRef.current = 'submit-message';
     setFailedAssistantId(null);
+
+    // Bypass failed ghosts for previousMessageId — they were never persisted.
+    const validDisplayedMessages = failedUserIds.size > 0
+      ? displayedMessages.filter((m) => !failedUserIds.has(m.id))
+      : displayedMessages;
+
+    // Clean up failed ghosts BEFORE sendMessage so they're not included in the
+    // request body sent to the server. setMessages updates this.state.messages
+    // synchronously, so sendMessage captures the cleaned list.
+    if (failedUserIds.size > 0) {
+      const idsToRemove = new Set(failedUserIds);
+      setMessages((prev) => prev.filter((m) => !idsToRemove.has(m.id)));
+      clearFailedGhosts();
+    }
+
     void onSubmitMessage({
       text,
       attachments,
       currentUIModelId,
       currentModeId,
-      displayedMessages,
+      displayedMessages: validDisplayedMessages,
       sendMessage,
       getLastRealMessageId,
     });
-  }, [canSendMessages, currentModeId, currentUIModelId, displayedMessages, onSubmitMessage, sendMessage]);
+  }, [canSendMessages, clearFailedGhosts, currentModeId, currentUIModelId, displayedMessages, failedUserIds, onSubmitMessage, sendMessage, setMessages]);
 
   const handleEditMessage = useCallback((parts: EditMessagePart[], previousMessageId: string | null) => {
     if (!canMutateMessages) {
@@ -468,6 +511,7 @@ export function ChatPageShell({
 
     inFlightTriggerRef.current = 'submit-message';
     setFailedAssistantId(null);
+    clearFailedGhosts();
     branchState.clearOverride(previousMessageId);
 
     if (previousMessageId) {
@@ -484,7 +528,7 @@ export function ChatPageShell({
       currentModeId,
       sendMessage,
     });
-  }, [branchState, canMutateMessages, currentModeId, currentUIModelId, onSubmitEditedMessage, sendMessage, setMessages, toUIMessage]);
+  }, [branchState, canMutateMessages, clearFailedGhosts, currentModeId, currentUIModelId, onSubmitEditedMessage, sendMessage, setMessages, toUIMessage]);
 
   const handleRegenerateMessage = useCallback((messageId: string, parentId: string | null) => {
     if (!canMutateMessages) {
@@ -493,6 +537,7 @@ export function ChatPageShell({
 
     inFlightTriggerRef.current = 'regenerate-message';
     setFailedAssistantId(null);
+    clearFailedGhosts();
     branchState.clearOverride(parentId);
     onSubmitRegeneratedMessage({
       messageId,
@@ -501,7 +546,7 @@ export function ChatPageShell({
       currentModeId,
       regenerate,
     });
-  }, [branchState, canMutateMessages, currentModeId, currentUIModelId, onSubmitRegeneratedMessage, regenerate]);
+  }, [branchState, canMutateMessages, clearFailedGhosts, currentModeId, currentUIModelId, onSubmitRegeneratedMessage, regenerate]);
 
   const scrollToBottom = useCallback(() => {
     if (messagesContainerRef.current) {
@@ -594,6 +639,9 @@ export function ChatPageShell({
                       hasAllowance={hasAllowance}
                       isLoadingAllowance={isLoadingAllowance}
                       failedAssistantId={failedAssistantId}
+                      failedUserIds={failedUserIds}
+                      onRetryUserMessage={handleRetryUserMessage}
+                      canSendMessages={canSendMessages}
                     />
                   );
                 })}
@@ -649,8 +697,6 @@ export function ChatPageShell({
                 allowanceResetTime={allowanceResetTime}
                 isLoadingAllowance={isLoadingAllowance}
                 conversationId={chatId}
-                restoreDraft={restoreDraft}
-                onRestoreDraftConsumed={handleRestoreDraftConsumed}
               />
             </motion.div>
             <p className="mt-1 text-center text-[12px] text-gray-500">

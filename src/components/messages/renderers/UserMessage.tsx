@@ -2,7 +2,7 @@
 
 import { memo, useState, useCallback } from 'react';
 import { UIMessage, type TextUIPart, type FileUIPart } from 'ai';
-import { Copy, Check, Pencil, X, Loader2, ArrowUp, FileText, XIcon, Download } from 'lucide-react';
+import { Copy, Check, Pencil, X, Loader2, ArrowUp, FileText, XIcon, Download, RefreshCw } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Overlay, OverlayClose, OverlayContent, OverlayDescription, OverlayTitle } from '@/components/custom-ui/overlay';
 import { useIsTouchDevice } from '@/hooks/use-touch-device';
@@ -33,8 +33,12 @@ interface UserMessageProps {
   isLoadingAllowance?: boolean;
   /** When provided, resolves attachments via the public share endpoint instead of the authenticated one. Also enables readOnly mode. */
   shareToken?: string;
-  /** Delivery status — reserved for future use (e.g. failed-send Retry UI). */
+  /** Delivery status — 'failed' shows a Retry affordance below the bubble. */
   status?: 'normal' | 'failed';
+  /** Retries sending this message (shown when status is 'failed'). */
+  onRetry?: () => void;
+  /** Whether the user can send/regenerate right now. */
+  canSendMessages?: boolean;
 }
 
 /**
@@ -309,6 +313,9 @@ export const UserMessage = memo(function UserMessage({
   hasAllowance,
   isLoadingAllowance,
   shareToken,
+  status = 'normal',
+  onRetry,
+  canSendMessages = true,
 }: UserMessageProps) {
   const readOnly = !!shareToken;
   const [copied, setCopied] = useState(false);
@@ -496,6 +503,21 @@ export const UserMessage = memo(function UserMessage({
             </Tooltip>
           )}
         </div>
+
+        {status === 'failed' && onRetry && (
+          <div role="alert" className="flex items-center justify-end gap-2 mt-1">
+            <span className="text-xs text-destructive">Failed to send</span>
+            <button
+              type="button"
+              onClick={onRetry}
+              disabled={isLoading || isGenerating || !canSendMessages}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Retry
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
