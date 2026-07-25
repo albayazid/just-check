@@ -119,36 +119,22 @@ describe("POST /api/subscription/update", () => {
     expect(res.status).toBe(402);
   });
 
-  it("returns success with the new subscription and currency on a successful change", async () => {
+  it("returns success on a successful change-plan request", async () => {
+    // change-plan returns an empty 200 body; the route only signals success/error.
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        dodoResponse({ subscription: { id: "dodo_sub_1", status: "active" } }),
-      ),
+      vi.fn().mockResolvedValue(dodoResponse("", { status: 200 })),
     );
 
     const res = await POST(updateRequest(PRODUCT_IDS.PLUS_MONTHLY) as never);
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.subscription).toEqual({ id: "dodo_sub_1", status: "active" });
-    expect(body.currency).toBe("USD"); // echoed from the stored subscription
-  });
-
-  it("falls back to USD currency when the stored subscription has none", async () => {
-    installSubscription({ ...FULL_SUB, currency: null });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(dodoResponse({ subscription: { id: "dodo_sub_1" } })),
-    );
-
-    const res = await POST(updateRequest(PRODUCT_IDS.PLUS_MONTHLY) as never);
-    expect((await res.json()).currency).toBe("USD");
+    expect(body).toEqual({ success: true });
   });
 
   it("targets the Dodo change-plan endpoint with the mapped product_id and prorated billing", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(dodoResponse({ subscription: {} })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(dodoResponse("", { status: 200 })));
 
     await POST(updateRequest(PRODUCT_IDS.PLUS_MONTHLY) as never);
 

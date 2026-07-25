@@ -681,6 +681,65 @@ export async function POST(request: NextRequest) {
         break;
       }
 
+      case "subscription.expired": {
+        // Fixed-term subscription reached the end of its term (expires_at).
+        // Terminal state: the user legitimately loses access, so drop them to
+        // the free-plan allowance, mirroring subscription.cancelled.
+        const data = payload.data;
+        const dodoEventTimestamp = payload.timestamp;
+
+        const clerkUserId = data.customer?.metadata?.clerk_user_id;
+        const productId = data.product_id;
+        const subscriptionId = data.subscription_id;
+        const expiresAt = data.expires_at;
+
+        if (!clerkUserId) {
+          throw new Error('Missing clerk_user_id in customer metadata');
+        }
+
+        const isDuplicateWebhookTimestamp = await hasMatchingDodoWebhookTimestamp(
+          supabase,
+          subscriptionId,
+          dodoEventTimestamp
+        );
+
+        if (isDuplicateWebhookTimestamp) {
+          return NextResponse.json({ received: true, status: "skipped_duplicate" }, { status: 200 });
+        }
+
+        const { planId } = await updateSubscription(
+          supabase,
+          clerkUserId,
+          productId,
+          subscriptionId,
+          {
+            status: data.status, // "expired"
+            created_at: data.created_at,
+            next_billing_date: data.next_billing_date,
+            payment_frequency_interval: data.payment_frequency_interval,
+            trial_period_days: data.trial_period_days,
+            recurring_pre_tax_amount: data.recurring_pre_tax_amount,
+            currency: data.currency,
+            cancel_at_next_billing_date: data.cancel_at_next_billing_date,
+            customer: data.customer,
+            canceled_at: data.cancelled_at,
+          },
+          dodoEventTimestamp
+        );
+
+        // Reset allowance to free plan
+        await resetAllowanceToFreePlan(supabase, clerkUserId);
+
+        processingDetails = {
+          action: 'subscription_expired',
+          clerk_user_id: clerkUserId,
+          plan_id: planId,
+          subscription_id: subscriptionId,
+          expires_at: expiresAt,
+        };
+        break;
+      }
+
       // =======================================================================
       // DEFAULT: Unhandled event types
       // =======================================================================

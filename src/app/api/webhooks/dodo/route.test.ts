@@ -248,6 +248,31 @@ describe("POST /api/webhooks/dodo — event processing", () => {
       canceled_at: "2026-06-28T12:00:00Z",
     });
   });
+
+  it("subscription.expired: resets allowance to the free plan amount", async () => {
+    const res = await POST(buildWebhookRequest(buildSubscriptionEventPayload({ type: "subscription.expired" })));
+    expect(res.status).toBe(200);
+
+    expect(client().from).toHaveBeenCalledWith("periodic_allowance");
+    const chain = client().from("periodic_allowance") as unknown as { upsert: ReturnType<typeof vi.fn> };
+    const upsertArg = chain.upsert.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(upsertArg.alloted_allowance).toBe(PLAN_ALLOWANCES.free);
+    expect(upsertArg.remaining_allowance).toBe(PLAN_ALLOWANCES.free);
+  });
+
+  it("subscription.expired records the expires_at timestamp in processing_details", async () => {
+    await POST(buildWebhookRequest(buildSubscriptionEventPayload({
+      type: "subscription.expired",
+      data: { expires_at: "2027-07-25T00:00:00Z" },
+    })));
+
+    const chain = client().from("webhook_event_log") as unknown as { update: ReturnType<typeof vi.fn> };
+    const updateArg = chain.update.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(updateArg.processing_details).toMatchObject({
+      action: "subscription_expired",
+      expires_at: "2027-07-25T00:00:00Z",
+    });
+  });
 });
 
 describe("POST /api/webhooks/dodo — timestamp deduplication", () => {

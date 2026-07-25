@@ -93,23 +93,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let data: any;
-    try {
-      const responseText = await response.text();
-      data = responseText ? JSON.parse(responseText) : {};
-    } catch (parseError) {
-      console.error('Failed to parse DODO response as JSON:', parseError);
-      // Even if response parsing fails, the subscription change may have succeeded
-      // Don't throw - just continue with empty data
-      data = {};
-    }
-
-    // 5. RETURN SUCCESS: Return subscription data from Dodo
-    return NextResponse.json({
-      success: true,
-      subscription: data?.subscription || null,
-      currency: subscription.currency || 'USD',
-    });
+    // 5. RETURN SUCCESS: change-plan returns an empty body, so we only signal
+    // success/error here. The new plan is confirmed by the subscription webhook.
+    return NextResponse.json({ success: true });
 
   } catch (error) {
     console.error('Error updating subscription:', error);

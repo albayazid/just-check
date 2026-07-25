@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
 
     if (existingSubscription && existingSubscription.length > 0) {
       return NextResponse.json(
-        { 
+        {
           error: 'Active subscription exists',
           message: 'You already have an active subscription. Use the upgrade endpoint to change plans.',
           currentPlan: existingSubscription[0].plan_id
@@ -196,7 +196,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       checkout_url: data.checkout_url,
-      checkout_id: data.checkout_id,
+      session_id: data.session_id,
     });
 
   } catch (error) {
@@ -277,7 +277,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       checkout_url: data.checkout_url,
-      checkout_id: data.checkout_id,
+      session_id: data.session_id,
     });
 
   } catch (error) {

@@ -121,15 +121,15 @@ async function handleCheckout(productId: string): Promise<{ success: boolean; er
 
     if (!checkoutResponse.ok) {
       const errorData = await checkoutResponse.json();
-      
+
       // Handle 409 Conflict - user already has subscription
       if (checkoutResponse.status === 409) {
-        return { 
-          success: false, 
-          error: errorData.message || 'You already have an active subscription. Please use the upgrade option instead.' 
+        return {
+          success: false,
+          error: errorData.message || 'You already have an active subscription. Please use the upgrade option instead.'
         };
       }
-      
+
       return { success: false, error: errorData.error || 'Failed to create checkout session' };
     }
 
@@ -186,7 +186,7 @@ export default function UpgradePageClient() {
     },
     onSuccess: () => {
       setShowUncancelDialog(false);
-      
+
       // If there's a pending plan after uncancel, proceed to show confirmation dialog
       if (pendingPlanAfterUncancel) {
         setSelectedPlan(pendingPlanAfterUncancel);
@@ -275,12 +275,12 @@ export default function UpgradePageClient() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        
+
         // Handle 403 - subscription scheduled for cancellation or no active subscription
         if (response.status === 403) {
           throw new Error(errorData.message || errorData.error || 'Cannot upgrade subscription');
         }
-        
+
         throw new Error(errorData.error || 'Failed to update subscription');
       }
 
@@ -310,7 +310,7 @@ export default function UpgradePageClient() {
   const handlePlanClick = (plan: PricingPlan) => {
     // Check if subscription is scheduled to cancel
     const isScheduledToCancel = subscription?.cancelAtPeriodEnd;
-    
+
     if (plan.productId === currentPlanId) {
       // User clicked their current plan
       if (isScheduledToCancel) {
@@ -401,8 +401,8 @@ export default function UpgradePageClient() {
                 className={`relative flex flex-col justify-between ${isCurrentPlan
                   ? "border-primary/80"
                   : plan.highlight
-                  ? "border-primary ring-2 ring-primary scale-105"
-                  : ""
+                    ? "border-primary ring-2 ring-primary scale-105"
+                    : ""
                   }`}
               >
                 {plan.badge && (
@@ -576,13 +576,13 @@ export default function UpgradePageClient() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-green-600 dark:text-green-400">
-              Upgrade Request Successful!
+              Request Successful!
             </DialogTitle>
             <div className="space-y-3 pt-2 text-muted-foreground">
               <p className="text-sm">
-                Your subscription has been changed from{" "}
+                We've received your request to change from{" "}
                 <span className="font-semibold">{getPlanDisplayName(currentPlanId)}</span> to{" "}
-                <span className="font-semibold">{selectedPlan?.name}</span>.
+                <span className="font-semibold">{selectedPlan?.name}</span>. Your plan will update once the payment is processed.
               </p>
 
               {previewData && (
@@ -595,7 +595,7 @@ export default function UpgradePageClient() {
               )}
 
               <p className="text-xs text-muted-foreground pt-2 border-t">
-                The change has taken effect immediately. You can now continue to the app.
+                Your request is being processed. You can continue to the app; your new plan will appear shortly.
               </p>
             </div>
           </DialogHeader>

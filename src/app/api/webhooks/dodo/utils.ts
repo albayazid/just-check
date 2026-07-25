@@ -20,6 +20,8 @@ export interface DodoSubscriptionEventData {
   cancel_at_next_billing_date?: boolean;
   customer?: { customer_id?: string };
   canceled_at?: string;
+  /** End-of-term timestamp for fixed-term subscriptions (status "expired"). */
+  expires_at?: string;
 }
 
 /** The `user_subscriptions` row built from a Dodo event. */
