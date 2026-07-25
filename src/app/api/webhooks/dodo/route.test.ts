@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { NextRequest } from "next/server";
 
 // DODO_WEBHOOK_SECRET is read at module load (route.ts:85). Must be set BEFORE
 // the route module imports. vi.hoisted runs before imports.
@@ -337,8 +338,24 @@ describe("POST /api/webhooks/dodo — deliberate quirks (regression pins)", () =
     expect(upsertArg.metadata).not.toHaveProperty("provider_updated_at");
   });
 
-  it("QUIRK: unknown event types return 200 with action 'unhandled' (silent ack, not an error)", async () => {
-    const res = await POST(buildWebhookRequest(buildSubscriptionEventPayload({ type: "payment.success" })));
+  it("QUIRK: schema-valid event types we don't act on return 200 with action 'unhandled' (silent ack, not an error)", async () => {
+    // A real Dodo event the route doesn't switch on (abandoned_checkout.detected)
+    // is schema-valid, so it clears the gate and falls through to the default case.
+    const res = await POST(buildWebhookRequest({
+      id: "evt_test_1",
+      type: "abandoned_checkout.detected",
+      timestamp: "2026-06-28T00:00:00Z",
+      business_id: "biz_test_1",
+      data: {
+        payload_type: "AbandonedCheckout",
+        brand_id: "brand_test_1",
+        payment_id: "pay_1",
+        customer_id: "dodo_cust_1",
+        status: "abandoned",
+        abandoned_at: "2026-06-28T00:00:00Z",
+        abandonment_reason: "checkout_incomplete",
+      },
+    }));
     expect(res.status).toBe(200);
 
     const logChain = client().from("webhook_event_log") as unknown as { update: ReturnType<typeof vi.fn> };
@@ -383,10 +400,66 @@ describe("POST /api/webhooks/dodo — error handling", () => {
   it("returns 500 when clerk_user_id is missing from the event metadata", async () => {
     const payload = buildSubscriptionEventPayload({
       type: "subscription.active",
-      data: { customer: { customer_id: "c1", metadata: {} } }, // no clerk_user_id
+      // Schema-valid customer (email/name/phone_number present) but metadata has
+      // no clerk_user_id, so the handler throws inside processing.
+      data: { customer: { customer_id: "c1", email: "u@example.com", name: "U", phone_number: null, metadata: {} } },
     });
 
     const res = await POST(buildWebhookRequest(payload));
     expect(res.status).toBe(500);
+  });
+});
+describe("POST /api/webhooks/dodo — payload validation gate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    wireWebhookVerify(); // valid signature so requests reach the validation gate
+    stubDodoProductEnvs(vi);
+  });
+
+  it("returns 400 'Invalid JSON body' for a non-JSON request, before touching the DB", async () => {
+    const req = new NextRequest("https://app.test/api/webhooks/dodo", {
+      method: "POST",
+      headers: {
+        "webhook-id": "evt_1",
+        "webhook-signature": "sig",
+        "webhook-timestamp": "1719500000",
+      },
+      body: "{not valid json",
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid JSON body" });
+    // Validation runs before Supabase is initialised, so the DB is never touched.
+    expect(getSupabaseAdminClient).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 'Invalid payload' and writes a forensic record for a schema-invalid body", async () => {
+    // Real DB mock so the forensic insert is recorded instead of swallowed.
+    installSupabase();
+
+    // Valid JSON, but not a recognised Dodo event: bogus type + empty data.
+    const res = await POST(buildWebhookRequest({ type: "totally.made_up", data: {} }));
+    expect(res.status).toBe(400);
+
+    const body = await res.json();
+    expect(body.error).toBe("Invalid payload");
+    // Details format is schema-version dependent; only assert a non-empty reason.
+    expect(typeof body.details).toBe("string");
+    expect(body.details.length).toBeGreaterThan(0);
+
+    // Forensic record: a signature-verified but schema-invalid webhook is
+    // persisted so it isn't lost — Dodo does not retry 4xx.
+    expect(getSupabaseAdminClient).toHaveBeenCalledTimes(1);
+    const mockClient = vi.mocked(getSupabaseAdminClient).mock.results[0]?.value as ReturnType<typeof createMockSupabaseClient>;
+    const chain = mockClient.from("webhook_event_log") as unknown as { insert: ReturnType<typeof vi.fn> };
+    expect(chain.insert).toHaveBeenCalledTimes(1);
+    const insertArg = chain.insert.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(insertArg.provider).toBe("dodo");
+    expect(insertArg.event_type).toBe("totally.made_up"); // type surfaced from the raw payload
+    expect(insertArg.processed).toBe(false);
+    expect(insertArg.http_status).toBe(400);
+    expect((insertArg.processing_details as { rejected: boolean }).rejected).toBe(true);
   });
 });

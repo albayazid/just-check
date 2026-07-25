@@ -32,6 +32,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient, SupabaseClient } from '@/lib/supabase-client.server';
 import { Webhook } from "standardwebhooks";
+import { WebhookPayloadSchema } from "@dodopayments/core";
+import { z } from "zod/v3";
 import { PLAN_ALLOWANCES } from "@/lib/subscription-utils.server";
 import { getCurrentUtcDailyAllowanceWindow } from "@/lib/allowance";
 import { buildSubscriptionData, getPlanIdFromProductId, type DodoSubscriptionEventData } from "./utils";
@@ -74,6 +76,36 @@ async function hasMatchingDodoWebhookTimestamp(
     console.error(`Error checking timestamp for ${subscriptionId}:`, error);
     return false; // Fail safe - process the webhook
   }
+}
+
+/**
+ * Best-effort forensic record for a signature-verified but schema-invalid
+ * webhook. Dodo does not retry 4xx, so the full payload is persisted for ops
+ * to investigate. Failures here are swallowed on purpose: this logging must
+ * never mask the validation response or change the status code.
+*/
+async function logRejectedWebhook(
+  supabase: SupabaseClient,
+  webhookId: string,
+  payload: unknown,
+  details: string,
+): Promise<void> {
+  const maybeType = (payload as { type?: unknown } | null)?.type;
+  const eventType = typeof maybeType === "string" ? maybeType : "unknown";
+  await supabase.from("webhook_event_log").insert({
+    provider: "dodo",
+    event_type: eventType,
+    provider_event_id: webhookId,
+    payload,
+    processed: false,
+    received_at: new Date().toISOString(),
+    http_status: 400,
+    processing_details: {
+      rejected: true,
+      reason: "schema_validation_failed",
+      issues: details,
+    },
+  });
 }
 
 // =============================================================================
@@ -277,18 +309,39 @@ export async function POST(request: NextRequest) {
   }
 
   // ===========================================================================
-  // STEP 2: PARSE PAYLOAD & EXTRACT EVENT INFO
+  // STEP 2: PARSE & VALIDATE PAYLOAD
   // ===========================================================================
-  // Now that we've verified the webhook is authentic, parse the JSON body
-  // The payload contains information about what happened at Dodo
+  // Confirm the contents match a recognised Dodo event shape before any DB
+  // write. Invalid payloads return 400; Dodo does not retry 4xx.
   // ===========================================================================
 
-  const payload = JSON.parse(rawBody);
-  const eventType = payload.type;  // e.g., "subscription.active", "payment.success"
+  // Typed as the schema's INPUT shape: date-like fields stay as raw ISO strings.
+  // The schema's OUTPUT coerces them to Date, which the dedup string-compare and
+  // the persisted DB values do not expect — so we read `payload`, not `validation.data`.
+  let payload: z.input<typeof WebhookPayloadSchema>;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
-  // Initialize the Supabase admin client
-  // Admin client bypasses RLS (Row Level Security) for server-side operations
+  // Initialised before validation so rejected payloads can still be logged.
   const supabase = getSupabaseAdminClient();
+
+  const validation = WebhookPayloadSchema.safeParse(payload);
+  if (!validation.success) {
+    console.error("Webhook payload validation failed:", validation.error.issues);
+    const details = validation.error.issues
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+      .join("; ");
+    // Persist the rejected payload: Dodo does not retry 4xx.
+    await logRejectedWebhook(supabase, webhookId, payload, details).catch(() => {
+      /* best-effort: never mask the validation response */
+    });
+    return NextResponse.json({ error: "Invalid payload", details }, { status: 400 });
+  }
+
+  const eventType = payload.type; // e.g., "subscription.active", "subscription.renewed"
 
   // ===========================================================================
   // STEP 3: IDEMPOTENCY CHECK - Prevent duplicate processing
