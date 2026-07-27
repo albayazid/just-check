@@ -4,10 +4,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Settings,
-  Shield,
-  Plug,
-  User,
+  SlidersHorizontal,
+  ShieldCheck,
+  Gauge,
+  CircleUser,
   Brain,
   ArrowLeft,
   FolderCog
@@ -21,7 +21,7 @@ const settingsSections = [
   {
     key: "general",
     label: "General",
-    icon: Settings,
+    icon: SlidersHorizontal,
     href: "/settings/general"
   },
   {
@@ -39,19 +39,19 @@ const settingsSections = [
   {
     key: "usage",
     label: "Usage",
-    icon: Plug,
+    icon: Gauge,
     href: "/settings/usage"
   },
   {
     key: "privacy",
     label: "Privacy",
-    icon: Shield,
+    icon: ShieldCheck,
     href: "/settings/privacy"
   },
   {
     key: "account",
     label: "Account",
-    icon: User,
+    icon: CircleUser,
     href: "/settings/account"
   },
 ];
