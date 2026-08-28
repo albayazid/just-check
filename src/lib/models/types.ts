@@ -1,6 +1,6 @@
 import type { SharedV3ProviderOptions } from '@ai-sdk/provider';
 
-export type ModelProvider = 'openrouter' | 'google';
+export type ModelProvider = 'openrouter';
 
 export type Modality = 'text' | 'image' | 'audio' | 'video';
 

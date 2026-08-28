@@ -23,13 +23,13 @@ export function resolveModelRoute(uiModelId: string, context?: RoutingContext): 
             if (context?.hasImages) {
                 return {
                     provider: 'openrouter',
-                    id: 'moonshotai/kimi-k2.5',
+                    id: 'qwen/qwen3.8-flash',
                     providerOptions: { openrouter: { reasoning: { enabled: false } } }
                 };
             }
             return {
                 provider: 'openrouter',
-                id: 'deepseek/deepseek-v3.2',
+                id: 'deepseek/deepseek-v4-flash-0731',
                 providerOptions: { openrouter: { reasoning: { enabled: false } } }
             };
 
@@ -37,46 +37,46 @@ export function resolveModelRoute(uiModelId: string, context?: RoutingContext): 
             if (context?.hasImages) {
                 return {
                     provider: 'openrouter',
-                    id: 'moonshotai/kimi-k2.5',
-                    providerOptions: { openrouter: { reasoning: { enabled: true } } }
+                    id: 'z-ai/glm-5.3-flash',
+                    providerOptions: { openrouter: { reasoning: { effort: 'low' } } }
                 };
             }
             return {
                 provider: 'openrouter',
-                id: 'deepseek/deepseek-v3.2',
+                id: 'deepseek/deepseek-v4-flash-0731',
                 providerOptions: { openrouter: { reasoning: { enabled: true } } }
             };
 
         case 'pro-thinker':
             return {
                 provider: 'openrouter',
-                id: 'moonshotai/kimi-k2.6',
-                providerOptions: { openrouter: { reasoning: { enabled: true } } }
+                id: 'z-ai/glm-5.3-flash',
+                providerOptions: { openrouter: { reasoning: { effort: 'max' } } }
             };
 
         case 'lumy-flash-1':
             if (context?.hasImages) {
                 return {
                     provider: 'openrouter',
-                    id: 'moonshotai/kimi-k2.5',
+                    id: 'qwen/qwen3.8-flash',
                     providerOptions: { openrouter: { reasoning: { enabled: false } } }
                 };
             }
             return {
                 provider: 'openrouter',
-                id: 'deepseek/deepseek-v3.2',
+                id: 'deepseek/deepseek-v4-flash-0731',
                 providerOptions: { openrouter: { reasoning: { enabled: false } } }
             };
 
         case 'lumy-itor-1':
             return {
                 provider: 'openrouter',
-                id: 'moonshotai/kimi-k2.6',
-                providerOptions: { openrouter: { reasoning: { enabled: true } } }
+                id: 'z-ai/glm-5.3-flash',
+                providerOptions: { openrouter: { reasoning: { effort: 'max' } } }
             };
 
         default:
             // Fallback for any unknown or unspecified model IDs
-            return { provider: 'openrouter', id: 'moonshotai/kimi-k2.5' };
+            return { provider: 'openrouter', id: 'z-ai/glm-5.3-flash' };
     }
 }

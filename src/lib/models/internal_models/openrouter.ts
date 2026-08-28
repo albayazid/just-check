@@ -2,30 +2,30 @@ import { Model } from '../types';
 
 export const OpenrouterModels: Model[] = [
     {
-        name: 'DeepSeek V3.2',
-        id: 'deepseek/deepseek-v3.2',
+        name: 'DeepSeek V4 Flash',
+        id: 'deepseek/deepseek-v4-flash-0731',
+        provider: 'openrouter',
+        pricing: {
+            input: 0.3,
+            output: 0.6,
+        },
+    },
+    {
+        name: 'GLM 5.3 Flash',
+        id: 'z-ai/glm-5.3-flash',
         provider: 'openrouter',
         pricing: {
             input: 0.4,
-            output: 0.7,
+            output: 0.8,
         },
     },
     {
-        name: 'Kimi K2.5',
-        id: 'moonshotai/kimi-k2.5',
+        name: 'Qwen 3.8 Flash',
+        id: 'qwen/qwen3.8-flash',
         provider: 'openrouter',
         pricing: {
-            input: 0.75,
-            output: 3,
-        },
-    },
-    {
-        name: 'Kimi K2.6',
-        id: 'moonshotai/kimi-k2.6',
-        provider: 'openrouter',
-        pricing: {
-            input: 1,
-            output: 5,
+            input: 0.3,
+            output: 0.6,
         },
     },
 ];

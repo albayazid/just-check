@@ -10,8 +10,8 @@ export interface ModelPricing {
  * Retrieves pricing for a given provider and model ID.
  * Looks up in the internal models registry.
  *
- * @param provider - The model provider (e.g., 'openrouter', 'google')
- * @param modelId - The model's technical ID (e.g., 'gemini-2.0-flash')
+ * @param provider - The model provider (e.g., 'openrouter')
+ * @param modelId - The model's technical ID (e.g., 'deepseek/deepseek-v4-flash-0731')
  * @returns ModelPricing if found, otherwise null
  */
 export function getModelPricing(provider: string, modelId: string): ModelPricing | null {

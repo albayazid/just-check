@@ -1,4 +1,3 @@
-import { google } from '@ai-sdk/google';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { ModelRoute } from './router';
 import { LanguageModel } from 'ai';
@@ -23,9 +22,6 @@ export function getLanguageModel(route: ModelRoute): LanguageModel {
     const { provider, id } = route;
 
     switch (provider) {
-        case 'google':
-            return google(id);
-
         case 'openrouter':
             return openrouter.chat(id);
 
